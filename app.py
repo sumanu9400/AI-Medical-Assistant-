@@ -218,6 +218,10 @@ def chat():
         return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 
+
+
+
+
 @app.route('/api/clear', methods=['POST'])
 def clear_conversation():
     """Clear conversation history."""
