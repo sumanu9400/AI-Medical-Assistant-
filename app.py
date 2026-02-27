@@ -1,5 +1,6 @@
 """
 Medical AI Assistant Chatbot - Flask Application with Streaming
+Optimized for Vercel Serverless Deployment
 """
 from flask import Flask, render_template, request, jsonify, session, Response, stream_with_context
 from flask_cors import CORS
@@ -12,44 +13,61 @@ import json
 import secrets
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables (Vercel uses System Env, but load_dotenv doesn't hurt)
 load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(16)
+app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(16))
 CORS(app)
 
-# Initialize Groq LLM — use a large, accurate model
-try:
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        groq_api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0.3,
-        max_tokens=2048,
-        streaming=True
-    )
-    llm_no_stream = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        groq_api_key=os.getenv("GROQ_API_KEY"),
-        temperature=0.3,
-        max_tokens=2048,
-        streaming=False
-    )
-    print("[OK] Groq LLM (llama-3.3-70b-versatile) initialized successfully")
-except Exception as e:
-    print(f"[ERROR] Error initializing Groq LLM: {e}")
-    llm = None
-    llm_no_stream = None
+# Global lazy-loaded objects
+_llm = None
+_llm_no_stream = None
+_vector_store = None
 
-# Initialize vector store (optional - for RAG)
-try:
-    vector_store = create_vector_store()
-    print("[OK] Vector store initialized successfully")
-except Exception as e:
-    print(f"[WARN] Vector store not available: {e}")
-    vector_store = None
+def get_llm(streaming=True):
+    """Lazy initialization of Groq LLM."""
+    global _llm, _llm_no_stream
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return None
+    
+    try:
+        if streaming:
+            if _llm is None:
+                _llm = ChatGroq(
+                    model="llama-3.3-70b-versatile",
+                    groq_api_key=api_key,
+                    temperature=0.3,
+                    max_tokens=2048,
+                    streaming=True
+                )
+            return _llm
+        else:
+            if _llm_no_stream is None:
+                _llm_no_stream = ChatGroq(
+                    model="llama-3.3-70b-versatile",
+                    groq_api_key=api_key,
+                    temperature=0.3,
+                    max_tokens=2048,
+                    streaming=False
+                )
+            return _llm_no_stream
+    except Exception as e:
+        print(f"[ERROR] LLM Init Error: {e}")
+        return None
 
+def get_vector_store():
+    """Lazy initialization of Vector Store."""
+    global _vector_store
+    if _vector_store is None:
+        try:
+            _vector_store = create_vector_store()
+        except Exception as e:
+            print(f"[WARN] Vector store initialization failed: {e}")
+            _vector_store = None
+    return _vector_store
 
 def build_messages(user_message, context, chat_history):
     """Build the message list for Groq LLM."""
@@ -63,49 +81,43 @@ def build_messages(user_message, context, chat_history):
         HumanMessage(content=prompt)
     ]
 
-
 def get_context_and_history(user_message):
     """Retrieve RAG context and format chat history from session."""
-    # RAG context
     context = ""
-    if vector_store:
+    vs = get_vector_store()
+    if vs:
         try:
-            context = retrieve_relevant_context(user_message, vector_store, k=4)
+            context = retrieve_relevant_context(user_message, vs, k=4)
         except Exception:
             context = ""
 
-    # Chat history (last 6 messages = 3 exchanges)
     chat_history = ""
     for msg in session.get("conversation_history", [])[-6:]:
         chat_history += f"{msg['role']}: {msg['content']}\n"
 
     return context, chat_history
 
-
 @app.route('/')
 def index():
     """Serve the main chat interface."""
     return render_template('index.html')
 
-
 @app.route('/api/health')
 def health():
     """Health check endpoint."""
+    llm_instance = get_llm()
+    vs_instance = get_vector_store()
     return jsonify({
         "status": "ok",
-        "llm": "ready" if llm else "unavailable",
-        "vector_store": "ready" if vector_store else "unavailable"
+        "llm": "ready" if llm_instance else "unavailable (check GROQ_API_KEY)",
+        "vector_store": "ready" if vs_instance else "unavailable (check index configuration)"
     })
-
 
 @app.route('/api/stream', methods=['POST'])
 def stream_chat():
-    """
-    Streaming chat endpoint using Server-Sent Events (SSE).
-    Returns tokens one-by-one for real-time display.
-    """
+    llm = get_llm(streaming=True)
     if llm is None:
-        return jsonify({'success': False, 'error': 'AI service is not available'}), 503
+        return jsonify({'success': False, 'error': 'AI service is not configured (check Environment Variables)'}), 503
 
     try:
         data = request.get_json()
@@ -127,10 +139,8 @@ def stream_chat():
                     token = chunk.content
                     if token:
                         full_response += token
-                        # SSE format: data: <json>\n\n
                         yield f"data: {json.dumps({'token': token})}\n\n"
 
-                # Add disclaimer for medical topics
                 needs_disclaimer = any(
                     kw in user_message.lower()
                     for kw in ['diagnose', 'treatment', 'medicine', 'drug', 'symptom',
@@ -140,105 +150,56 @@ def stream_chat():
                     full_response += DISCLAIMER_TEXT
                     yield f"data: {json.dumps({'token': DISCLAIMER_TEXT})}\n\n"
 
-                # Save to session history
                 session['conversation_history'].append({'role': 'User', 'content': user_message})
                 session['conversation_history'].append({'role': 'Assistant', 'content': full_response})
 
-                # Keep last 20 messages
                 if len(session['conversation_history']) > 20:
                     session['conversation_history'] = session['conversation_history'][-20:]
                 session.modified = True
-
-                # Signal end of stream
                 yield f"data: {json.dumps({'done': True})}\n\n"
 
             except Exception as e:
-                print(f"[ERROR] Streaming error: {e}")
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-        return Response(
-            stream_with_context(generate()),
-            mimetype='text/event-stream',
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no',
-                'Connection': 'keep-alive'
-            }
-        )
+        return Response(stream_with_context(generate()), mimetype='text/event-stream',
+                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
     except Exception as e:
-        print(f"[ERROR] Stream endpoint: {e}")
-        return jsonify({'success': False, 'error': 'An error occurred'}), 500
-
+        return jsonify({'success': False, 'error': 'An internal error occurred'}), 500
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """
-    Non-streaming fallback chat endpoint.
-    """
+    llm_no_stream = get_llm(streaming=False)
     if llm_no_stream is None:
-        return jsonify({'success': False, 'error': 'AI service is not available'}), 503
+        return jsonify({'success': False, 'error': 'AI service is not configured'}), 503
 
     try:
         data = request.get_json()
         user_message = data.get('message', '').strip()
-
-        if not user_message:
-            return jsonify({'success': False, 'error': 'Message cannot be empty'}), 400
-
         if 'conversation_history' not in session:
             session['conversation_history'] = []
 
         context, chat_history = get_context_and_history(user_message)
         messages = build_messages(user_message, context, chat_history)
-
         response = llm_no_stream.invoke(messages)
         ai_response = response.content
 
-        # Add disclaimer
-        needs_disclaimer = any(
-            kw in user_message.lower()
-            for kw in ['diagnose', 'treatment', 'medicine', 'drug', 'symptom',
-                       'pain', 'sick', 'disease', 'infection', 'fever', 'cancer']
-        )
+        needs_disclaimer = any(kw in user_message.lower() for kw in ['diagnose', 'treatment', 'medicine'])
         if needs_disclaimer:
             ai_response += DISCLAIMER_TEXT
 
         session['conversation_history'].append({'role': 'User', 'content': user_message})
         session['conversation_history'].append({'role': 'Assistant', 'content': ai_response})
-
-        if len(session['conversation_history']) > 20:
-            session['conversation_history'] = session['conversation_history'][-20:]
         session.modified = True
-
         return jsonify({'success': True, 'response': ai_response})
-
-    except Exception as e:
-        print(f"[ERROR] Chat endpoint: {e}")
-        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
-
-
-
-
-
-
-@app.route('/api/clear', methods=['POST'])
-def clear_conversation():
-    """Clear conversation history."""
-    try:
-        session['conversation_history'] = []
-        session.modified = True
-        return jsonify({'success': True, 'message': 'Conversation cleared'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/clear', methods=['POST'])
+def clear_conversation():
+    session['conversation_history'] = []
+    session.modified = True
+    return jsonify({'success': True, 'message': 'Conversation cleared'})
 
 if __name__ == '__main__':
-    print("\n" + "=" * 60)
-    print("Medical AI Assistant Chatbot")
-    print("=" * 60)
-    print("Server starting on http://localhost:5000")
-    print("Press Ctrl+C to stop")
-    print("=" * 60 + "\n")
-
     app.run(debug=True, host='0.0.0.0', port=5000)
