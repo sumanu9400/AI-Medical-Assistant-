@@ -1,4 +1,12 @@
-from app import app
+import sys
+import os
 
-# Vercel expects the Flask instance to be named "app"
-# This file serves as the entry point for Vercel Serverless Functions
+# Add the parent directory to sys.path to find app.py
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+try:
+    from app import app
+    print("Successfully imported app from app.py")
+except Exception as e:
+    print(f"Error importing app: {e}")
+    raise e

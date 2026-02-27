@@ -1,11 +1,12 @@
 langchain
-flask==3.1.1
+flask
 flask-cors
-sentence-transformers==4.1.0
-pypdf==5.6.1
-python-dotenv==1.1.0
+pypdf
+python-dotenv
 langchain-pinecone
 langchain-openai
 langchain-groq
 langchain-community
+openai
+pinecone-client
 gunicorn
