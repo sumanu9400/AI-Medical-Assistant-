@@ -220,7 +220,21 @@ def load_vector_store():
         logger.error(f"Error initializing Vector Store: {e}")
         return None
 
-# Page Setup
+# Centralized Theme configuration - ensures identical colors & styles locally and in production
+THEME = {
+    "PRIMARY_COLOR": "#3b82f6",          # Sleek blue accent
+    "BG_COLOR": "#0d1117",               # Dark background
+    "CARD_BG": "#161b22",                # Darker card/component background
+    "BORDER_COLOR": "#21262d",           # Border gray
+    "TEXT_COLOR": "#c9d1d9",             # Light gray body text
+    "ACCENT_COLOR": "#1e40af",           # Deep blue hover/header gradient
+    "SUCCESS_COLOR": "#10b981",          # Green for active states
+    "ERROR_COLOR": "#ef4444",            # Red for error states
+    "WARNING_COLOR": "#f59e0b",          # Yellow for warnings
+    "FONT_FAMILY": "'Outfit', 'Inter', sans-serif"
+}
+
+# Page Setup - Enforces layout="wide" to occupy screen optimally
 st.set_page_config(
     page_title="MedAI - Medical AI Assistant",
     page_icon="🏥",
@@ -228,41 +242,58 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Premium Styling
-st.markdown("""
+# Custom Premium Styling - locks page sizes, paddings, and styles to prevent layout shifts
+st.markdown(f"""
 <style>
-    /* Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+    /* Google Fonts Import */
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
     
-    html, body, [class*="css"] {
-        font-family: 'Outfit', sans-serif;
-    }
+    /* 1. Global Font and Layout Reset to avoid theme engine overriding styles */
+    html, body, [class*="css"], .stApp {{
+        font-family: {THEME["FONT_FAMILY"]};
+        background-color: {THEME["BG_COLOR"]} !important;
+        color: {THEME["TEXT_COLOR"]} !important;
+    }}
     
-    /* Global Styles */
-    .stApp {
-        background-color: #0d1117;
-        color: #c9d1d9;
-    }
+    /* 2. Lock block-container width to prevent stretching on large screens and center content */
+    .block-container {{
+        max-width: 1200px !important;
+        padding-top: 1.5rem !important;
+        padding-bottom: 4rem !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+        margin: 0 auto !important;
+    }}
     
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background-color: #161b22;
-        border-right: 1px solid #21262d;
-    }
+    /* 3. Lock Sidebar Width to prevent sizing shifts in cloud environments */
+    [data-testid="stSidebar"] {{
+        min-width: 320px !important;
+        max-width: 320px !important;
+        background-color: {THEME["CARD_BG"]} !important;
+        border-right: 1px solid {THEME["BORDER_COLOR"]} !important;
+    }}
     
-    /* Header Card */
-    .header-container {
-        background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
-        padding: 2.5rem;
-        border-radius: 16px;
-        margin-bottom: 2rem;
-        border: 1px solid #1e40af;
+    /* 4. Hide default Streamlit headers, options menu, and footer to clean up UI */
+    header, footer, [data-testid="stHeader"] {{
+        visibility: hidden !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }}
+    
+    /* 5. Header SaaS Card Gradient - remains identical across platforms */
+    .header-container {{
+        background: linear-gradient(135deg, {THEME["ACCENT_COLOR"]} 0%, #0f172a 100%);
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        border: 1px solid {THEME["ACCENT_COLOR"]};
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
         position: relative;
         overflow: hidden;
-    }
+    }}
     
-    .header-container::after {
+    .header-container::after {{
         content: '';
         position: absolute;
         top: -50%;
@@ -271,80 +302,158 @@ st.markdown("""
         height: 200%;
         background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
         pointer-events: none;
-    }
+    }}
     
-    .header-title {
+    .header-title {{
         color: #ffffff;
-        font-size: 2.5rem;
+        font-size: 2.2rem;
         font-weight: 700;
         margin: 0;
         display: flex;
         align-items: center;
         gap: 12px;
-    }
+    }}
     
-    .header-subtitle {
+    .header-subtitle {{
         color: #93c5fd;
-        font-size: 1.1rem;
-        margin-top: 0.5rem;
+        font-size: 1rem;
+        margin-top: 0.4rem;
         font-weight: 400;
-    }
+    }}
     
-    /* Pulse indicator */
-    .pulse-indicator {
+    /* 6. Pulse indicator */
+    .pulse-indicator {{
         display: inline-block;
-        width: 12px;
-        height: 12px;
-        background-color: #10b981;
+        width: 10px;
+        height: 10px;
+        background-color: {THEME["SUCCESS_COLOR"]};
         border-radius: 50%;
         box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
         animation: pulse 1.6s infinite;
-    }
+    }}
     
-    @keyframes pulse {
-        0% {
+    @keyframes pulse {{
+        0% {{
             transform: scale(0.95);
             box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-        }
-        70% {
+        }}
+        70% {{
             transform: scale(1);
-            box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
-        }
-        100% {
+            box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+        }}
+        100% {{
             transform: scale(0.95);
             box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-        }
-    }
+        }}
+    }}
     
-    /* Status Badge styling */
-    .status-badge {
+    /* 7. Status Badge styling */
+    .status-badge {{
         padding: 4px 10px;
         border-radius: 20px;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: 500;
         display: inline-flex;
         align-items: center;
         gap: 6px;
-    }
-    .status-active {
+    }}
+    .status-active {{
         background-color: rgba(16, 185, 129, 0.15);
         color: #34d399;
         border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-    .status-inactive {
-        background-color: rgba(239, 68, 68, 0.15);
-        color: #f87171;
-        border: 1px solid rgba(239, 68, 68, 0.3);
-    }
+    }}
     
-    /* Info Card */
-    .info-card {
-        background-color: #161b22;
-        border: 1px solid #21262d;
-        border-radius: 12px;
-        padding: 1.25rem;
-        margin-bottom: 1rem;
-    }
+    /* 8. Locked Chat Message UI - prevents dynamic height shifting on streaming */
+    [data-testid="stChatMessage"] {{
+        background-color: {THEME["CARD_BG"]} !important;
+        border: 1px solid {THEME["BORDER_COLOR"]} !important;
+        border-radius: 10px !important;
+        padding: 0.85rem !important;
+        margin-bottom: 0.75rem !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+    }}
+    [data-testid="stChatMessage"]:hover {{
+        border-color: {THEME["PRIMARY_COLOR"]} !important;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15) !important;
+    }}
+    
+    /* 9. Stable Sidebar Button Design with hover effects */
+    .stButton > button {{
+        background-color: #1f2937 !important;
+        color: #ffffff !important;
+        border: 1px solid #374151 !important;
+        border-radius: 6px !important;
+        padding: 0.4rem 0.8rem !important;
+        font-size: 0.9rem !important;
+        font-weight: 500 !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        width: 100% !important;
+    }}
+    .stButton > button:hover {{
+        background-color: {THEME["PRIMARY_COLOR"]} !important;
+        border-color: {THEME["PRIMARY_COLOR"]} !important;
+        color: #ffffff !important;
+        box-shadow: 0 0 8px rgba(59, 130, 246, 0.3) !important;
+    }}
+    
+    /* 10. Alignment fix for status labels inside the sidebar */
+    .status-line {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.4rem 0;
+        font-size: 0.85rem;
+        color: #8b949e;
+        border-bottom: 1px solid rgba(33, 38, 45, 0.5);
+    }}
+    .status-line:last-child {{
+        border-bottom: none;
+    }}
+    .status-line span {{
+        font-weight: 400;
+    }}
+    
+    /* 11. Info Card structure */
+    .info-card {{
+        background-color: {THEME["CARD_BG"]};
+        border: 1px solid {THEME["BORDER_COLOR"]};
+        border-radius: 10px;
+        padding: 1.1rem;
+        margin-bottom: 0.85rem;
+    }}
+    
+    /* 12. Lock Chat Input Box aesthetics */
+    [data-testid="stChatInput"] {{
+        background-color: transparent !important;
+        padding: 0.5rem 0 !important;
+    }}
+    [data-testid="stChatInput"] textarea {{
+        background-color: {THEME["CARD_BG"]} !important;
+        color: #ffffff !important;
+        border: 1px solid {THEME["BORDER_COLOR"]} !important;
+        border-radius: 8px !important;
+    }}
+    [data-testid="stChatInput"] textarea:focus {{
+        border-color: {THEME["PRIMARY_COLOR"]} !important;
+        box-shadow: 0 0 0 1px {THEME["PRIMARY_COLOR"]} !important;
+    }}
+    
+    /* 13. Custom Scrollbar for modern SaaS styling */
+    ::-webkit-scrollbar {{
+        width: 6px;
+        height: 6px;
+    }}
+    ::-webkit-scrollbar-track {{
+        background: {THEME["BG_COLOR"]};
+    }}
+    ::-webkit-scrollbar-thumb {{
+        background: {THEME["BORDER_COLOR"]};
+        border-radius: 4px;
+    }}
+    ::-webkit-scrollbar-thumb:hover {{
+        background: #374151;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -422,7 +531,7 @@ with st.sidebar:
     st.markdown("---")
     
     # 3. System Status
-    st.markdown("<h4 style='color: #8b949e;'>Services Status</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #8b949e; margin-top: 1.5rem;'>Services Status</h4>", unsafe_allow_html=True)
     
     llm = load_llm()
     vs = load_vector_store()
@@ -436,16 +545,30 @@ with st.sidebar:
     except:
         pass
         
-    status_db = "🟢 Ready" if db_ok else "🔴 Offline"
-    status_llm = "🟢 Connected" if llm else "🔴 Error (Check Key)"
-    status_vs = "🟢 Mounted" if vs else "🟡 Warning (No docs)"
+    status_db = "Ready" if db_ok else "Offline"
+    status_llm = "Connected" if llm else "Error (Check Key)"
+    status_vs = "Mounted" if vs else "Warning (No docs)"
     
-    st.markdown(f"**Database**: `{status_db}`")
-    st.markdown(f"**Groq LLM**: `{status_llm}`")
-    st.markdown(f"**Pinecone RAG**: `{status_vs}`")
+    # Render aligned SaaS status lines using CSS classes
+    st.markdown(f"""
+    <div style="background-color: {THEME['CARD_BG']}; border: 1px solid {THEME['BORDER_COLOR']}; border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem;">
+        <div class="status-line">
+            <span>Database</span>
+            <span style="color: {'#10b981' if db_ok else '#ef4444'}; font-weight: 600;">{status_db}</span>
+        </div>
+        <div class="status-line">
+            <span>Groq LLM</span>
+            <span style="color: {'#10b981' if llm else '#ef4444'}; font-weight: 600;">{status_llm}</span>
+        </div>
+        <div class="status-line">
+            <span>Pinecone RAG</span>
+            <span style="color: {'#10b981' if vs else '#f59e0b'}; font-weight: 600;">{status_vs}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Disclaimer in sidebar footer
-    st.markdown("<div style='font-size: 0.75rem; color: #8b949e; margin-top: 2rem; border-top: 1px solid #21262d; padding-top: 1rem;'>MedAI is an AI educational assistant. Always verify clinical choices with a qualified health professional.</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='font-size: 0.75rem; color: #8b949e; margin-top: 2rem; border-top: 1px solid {THEME['BORDER_COLOR']}; padding-top: 1rem;'>MedAI is an AI educational assistant. Always verify clinical choices with a qualified health professional.</div>", unsafe_allow_html=True)
 
 # --- MAIN PAGE CONTENT ---
 

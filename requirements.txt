@@ -1,18 +1,25 @@
+# Core Web Server dependencies (for Render and local backend)
 flask>=2.3.0
 flask-cors
 flask-mail
 Flask-Limiter
+
+# Langchain & AI libraries (for RAG & Groq streaming execution)
 langchain>=0.1.0
 langchain-community
 langchain-groq
 langchain-openai
-pinecone
-groq
-python-dotenv
-openai>=1.0.0
-pypdf
-werkzeug>=2.3.0
 langchain-pinecone
 langchain-text-splitters
-streamlit
+groq
+openai>=1.0.0
+
+# Database & Document Parsers
+pinecone
+pypdf
+python-dotenv
+werkzeug>=2.3.0
+
+# Frontend Framework & Production Hosting
+streamlit>=1.35.0
 gunicorn
