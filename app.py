@@ -67,10 +67,15 @@ _llm_stream = None
 _llm_no_stream = None
 _vector_store = None
 
+# --- DATABASE PATH CONFIG ---
+DB_PATH = 'medical_users.db'
+if os.environ.get('VERCEL') == '1':
+    DB_PATH = '/tmp/medical_users.db'
+
 # --- DATABASE SETUP ---
 def init_db():
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 username TEXT UNIQUE, 
@@ -160,7 +165,7 @@ def securely_store_otp(email, raw_otp):
     otp_hash = generate_password_hash(raw_otp)
     expiry = datetime.utcnow() + timedelta(minutes=5)
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             conn.execute("INSERT OR REPLACE INTO otp_store (email, otp_hash, expires_at, attempts) VALUES (?, ?, ?, 0)",
                          (email, otp_hash, expiry))
             conn.commit()
@@ -170,7 +175,7 @@ def securely_store_otp(email, raw_otp):
 def verify_and_delete_otp(email, raw_otp):
     """Verifies timing, attempts, and hash. Returns (bool: success, str: message)."""
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT otp_hash, expires_at, attempts FROM otp_store WHERE email=?", (email,))
             row = cursor.fetchone()
@@ -256,7 +261,7 @@ def get_context_and_history(user_message, session_id=None):
     chat_history_text = ""
     if session_id:
         try:
-            with sqlite3.connect('medical_users.db') as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT role, content FROM chat_messages WHERE session_id=? ORDER BY timestamp DESC LIMIT 6", (session_id,))
                 messages = cursor.fetchall()
@@ -280,7 +285,7 @@ def auto_login_guest():
         return
     if 'user_id' not in session:
         try:
-            with sqlite3.connect('medical_users.db') as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT id FROM users WHERE username='guest'")
                 row = cursor.fetchone()
@@ -314,7 +319,7 @@ def login():
         password = request.form.get('password', '')
         
         try:
-            with sqlite3.connect('medical_users.db') as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT id, username, password, role, is_active FROM users WHERE username=? OR email=?", (username, username))
                 user = cursor.fetchone()
@@ -368,7 +373,7 @@ def register():
         
         # Check uniqueness
         try:
-            with sqlite3.connect('medical_users.db') as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT id FROM users WHERE username=?", (username,))
                 if cursor.fetchone():
@@ -430,7 +435,7 @@ def verify_otp():
         if is_valid:
             temp_user = session['temp_user']
             try:
-                with sqlite3.connect('medical_users.db') as conn:
+                with sqlite3.connect(DB_PATH) as conn:
                     cursor = conn.cursor()
                     cursor.execute("INSERT INTO users (username, password, email, name) VALUES (?, ?, ?, ?)",
                                    (temp_user['username'], temp_user['password'], temp_user['email'], temp_user['name']))
@@ -490,7 +495,7 @@ def forgot_password():
         if action == 'send_code':
             email = request.form.get('email', '').strip()
             # Validate user exists
-            with sqlite3.connect('medical_users.db') as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT id FROM users WHERE email=?", (email,))
                 if not cursor.fetchone():
@@ -546,7 +551,7 @@ def reset_password():
         email = session['reset_email']
         new_hash = generate_password_hash(password)
         
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             conn.execute("UPDATE users SET password=? WHERE email=?", (new_hash, email))
             conn.commit()
             
@@ -608,7 +613,7 @@ def admin_dashboard():
         return redirect(url_for('index'))
     
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
@@ -639,7 +644,7 @@ def admin_toggle_user(user_id):
     if session.get('role') != 'admin' and session.get('username') != 'admin':
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE users SET is_active = CASE WHEN is_active=1 THEN 0 ELSE 1 END WHERE id=?", (user_id,))
             conn.commit()
@@ -704,7 +709,7 @@ def admin_delete_user(user_id):
     if session.get('role') != 'admin' and session.get('username') != 'admin':
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             # Sanitize input handled implicitly via ? parameter substitution 
             conn.execute("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE user_id=?)", (user_id,))
             conn.execute("DELETE FROM chat_sessions WHERE user_id=?", (user_id,))
@@ -753,7 +758,7 @@ def stream_chat():
 
         # Handle Query Editing: Delete the edited message and all subsequent messages to branch history
         if edit_message_id and session_id:
-            with sqlite3.connect('medical_users.db') as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT timestamp FROM chat_messages WHERE id=? AND session_id=?", (edit_message_id, session_id))
                 row = cursor.fetchone()
@@ -768,7 +773,7 @@ def stream_chat():
             def cached_stream():
                 if not session_id:
                     new_id = str(uuid.uuid4())
-                    with sqlite3.connect('medical_users.db') as conn:
+                    with sqlite3.connect(DB_PATH) as conn:
                         conn.execute("INSERT INTO chat_sessions (id, user_id, title) VALUES (?, ?, ?)",
                                    (new_id, user_id, user_message[:30]))
                         conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, 'User', ?)", (new_id, user_message))
@@ -788,7 +793,7 @@ def stream_chat():
             title = user_message[:35] + ('...' if len(user_message) > 35 else '')
             # Thread-safe DB access wrapper
             try:
-                with sqlite3.connect('medical_users.db') as conn:
+                with sqlite3.connect(DB_PATH) as conn:
                     conn.execute("INSERT INTO chat_sessions (id, user_id, title) VALUES (?, ?, ?)",
                                  (session_id, user_id, title))
             except Exception as db_err:
@@ -796,7 +801,7 @@ def stream_chat():
 
         # Save User Msg
         try:
-            with sqlite3.connect('medical_users.db') as conn:
+            with sqlite3.connect(DB_PATH) as conn:
                 conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
                              (session_id, 'User', user_message))
                 conn.execute("UPDATE chat_sessions SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (session_id,))
@@ -828,7 +833,7 @@ def stream_chat():
 
                 # Store response in DB
                 try:
-                    with sqlite3.connect('medical_users.db') as conn:
+                    with sqlite3.connect(DB_PATH) as conn:
                         conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
                                      (session_id, 'Assistant', full_response))
                 except Exception as db_err:
@@ -856,7 +861,7 @@ def stream_chat():
 def get_sessions():
     if 'user_id' not in session: return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT id, title, updated_at FROM chat_sessions WHERE user_id=? ORDER BY updated_at DESC", (session['user_id'],))
@@ -870,7 +875,7 @@ def get_sessions():
 def get_session_messages(session_id):
     if 'user_id' not in session: return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT id FROM chat_sessions WHERE id=? AND user_id=?", (session_id, session['user_id']))
@@ -886,7 +891,7 @@ def get_session_messages(session_id):
 def delete_session(session_id):
     if 'user_id' not in session: return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             conn.execute("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE id=? AND user_id=?)", (session_id, session['user_id']))
             conn.execute("DELETE FROM chat_sessions WHERE id=? AND user_id=?", (session_id, session['user_id']))
             conn.commit()
@@ -900,7 +905,7 @@ def rename_session(session_id):
     title = request.get_json().get('title', '').strip()
     if not title: return jsonify({'success': False, 'error': 'Empty title'}), 400
     try:
-        with sqlite3.connect('medical_users.db') as conn:
+        with sqlite3.connect(DB_PATH) as conn:
             conn.execute("UPDATE chat_sessions SET title=? WHERE id=? AND user_id=?", (title, session_id, session['user_id']))
             conn.commit()
             return jsonify({'success': True})
