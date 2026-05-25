@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# Bridge Streamlit Secrets to environment variables for helpers
+try:
+    for key, value in st.secrets.items():
+        os.environ[key] = str(value)
+except Exception:
+    pass
+
 # Database Helper Functions
 DB_PATH = "medical_users.db"
 
