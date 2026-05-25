@@ -3,123 +3,198 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="MedAI - Accurate medical information powered by AI">
-    <title>MedAI | Medical AI Assistant</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <title>MedAI — Medical AI Assistant</title>
+    <meta name="description" content="MedAI — Your AI-powered medical assistant with RAG technology.">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Marked.js for markdown rendering -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
-    <div class="app-layout">
+<!-- Animated Background -->
+<div class="medical-bg" aria-hidden="true">
+    <div class="subtle-grid"></div>
+    <div class="particles"></div>
+    <div class="ecg-container" style="height: 100px; opacity: 0.15; position: absolute; top: 50%; width: 100%;">
+        <canvas id="bgECG"></canvas>
+    </div>
+</div>
 
-        <!-- ===== SIDEBAR ===== -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="brand">
-                    <div class="brand-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2v-5h2v5zm0-7h-2V7h2v2z" fill="currentColor"/>
-                        </svg>
+<!-- Toast Notifications -->
+<div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+<!-- App Layout -->
+<div class="app-layout">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar navigation">
+
+        <!-- Sidebar Header -->
+        <div class="sidebar-header">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fas fa-stethoscope"></i>
+                </div>
+                <span class="brand-name">MedAI</span>
+            </div>
+            <button class="new-chat-btn" id="newChatBtn" title="New Chat" aria-label="Start new chat">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
+
+        <!-- Search -->
+        <div class="sidebar-search">
+            <i class="fas fa-search"></i>
+            <input type="text" id="historySearch" placeholder="Search conversations..." aria-label="Search chat history">
+        </div>
+
+        <!-- Chat History List -->
+        <div class="sidebar-section history-section" id="historySection">
+            <p class="sidebar-label">Recent Chats</p>
+            <div id="historyList" class="history-list" role="list">
+                <div class="empty-history" id="emptyHistory">
+                    <i class="fas fa-comment-slash" style="font-size:1.5rem;opacity:0.3;margin-bottom:8px;"></i>
+                    <p>No conversations yet</p>
+                    <p style="font-size:0.75rem;margin-top:4px;">Start chatting to see history</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Questions -->
+        <div class="sidebar-section quick-section">
+            <p class="sidebar-label">Quick Questions</p>
+            <div class="quick-chips">
+                <button class="chip" data-query="What are the early symptoms of diabetes?">🩸 Diabetes Symptoms</button>
+                <button class="chip" data-query="How can I manage high blood pressure naturally?">❤️ Manage Hypertension</button>
+                <button class="chip" data-query="What is the recommended diet for a healthy heart?">🥗 Heart Healthy Diet</button>
+                <button class="chip" data-query="What are common causes of headaches and migraines?">🤕 Headache Causes</button>
+                <button class="chip" data-query="How to improve sleep quality and treat insomnia?">😴 Better Sleep Tips</button>
+                <button class="chip" data-query="What are the signs of vitamin D deficiency?">☀️ Vitamin D Deficiency</button>
+            </div>
+        </div>
+
+        <!-- User Profile Footer -->
+        <div class="sidebar-footer" style="padding: 16px; border-top: 1px solid var(--border); margin-top: auto;">
+            <div class="user-profile-card" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+                <div class="user-avatar-circle" style="width: 36px; height: 36px; background: var(--gradient-brand); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem;">
+                    {{ session.username[0].upper() if session.username else 'U' }}
+                </div>
+                <div class="user-info-text" style="flex: 1; min-width: 0;">
+                    <p class="user-display-name" style="font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ session.username }}</p>
+                    <p class="user-display-role" style="font-size: 0.7rem; color: var(--text-muted);">{{ session.role | capitalize if session.role else 'User' }}</p>
+                </div>
+                <a href="{{ url_for('logout') }}" style="color: var(--danger); opacity: 0.7; transition: var(--transition);"><i class="fas fa-sign-out-alt"></i></a>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN PANEL ===== -->
+    <main class="main-panel" id="mainPanel">
+
+        <!-- Chat Header -->
+        <header class="chat-header">
+            <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar" aria-label="Toggle sidebar">
+                <i class="fas fa-bars"></i>
+            </button>
+
+            <div class="header-info">
+                <div class="header-avatar">
+                    <i class="fas fa-heartbeat"></i>
+                </div>
+                <div>
+                    <h1>Medical AI Assistant</h1>
+                    <div class="status-row">
+                        <span class="status-dot" id="statusDot" aria-live="polite"></span>
+                        <span class="status-text" id="statusText">Online &amp; Ready to Help</span>
                     </div>
-                    <span class="brand-name">MedAI</span>
                 </div>
             </div>
 
-            <div class="sidebar-section">
-                <p class="sidebar-label">Quick Questions</p>
-                <div class="quick-chips">
-                    <button class="chip" data-query="What are the common causes of headache?">🤕 Headache causes</button>
-                    <button class="chip" data-query="What should I do if I have a fever?">🌡️ Fever & what to do</button>
-                    <button class="chip" data-query="What are early symptoms of diabetes?">🩸 Diabetes symptoms</button>
-                    <button class="chip" data-query="How can I lower my blood pressure naturally?">❤️ Lower blood pressure</button>
-                    <button class="chip" data-query="What are common cold vs flu differences?">🤧 Cold vs flu</button>
-                    <button class="chip" data-query="How much sleep do adults need for good health?">😴 Sleep & health</button>
-                    <button class="chip" data-query="What vitamins are important for immunity?">💊 Immunity vitamins</button>
-                    <button class="chip" data-query="What are warning signs of a heart attack?">🫀 Heart attack signs</button>
-                    <button class="chip" data-query="How can I manage stress and anxiety naturally?">🧠 Stress & anxiety</button>
-                    <button class="chip" data-query="What foods should I avoid for good gut health?">🥗 Gut health foods</button>
-                </div>
-            </div>
-
-            <div class="sidebar-disclaimer">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                For educational use only. Always consult a doctor for medical decisions.
-            </div>
-        </aside>
-
-        <!-- ===== MAIN PANEL ===== -->
-        <main class="main-panel">
-            <!-- Header -->
-            <header class="chat-header">
-                <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <!-- Header Action Buttons -->
+            <div class="header-actions">
+                <button id="pdfBtn" class="header-icon-btn" title="Download Chat as PDF" aria-label="Download PDF">
+                    <i class="fas fa-file-pdf"></i>
                 </button>
-                <div class="header-info">
-                    <div class="header-avatar">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2v-5h2v5zm0-7h-2V7h2v2z" fill="currentColor"/></svg>
-                    </div>
-                    <div>
-                        <h1>MedAI Assistant</h1>
-                        <div class="status-row">
-                            <span class="status-dot" id="statusDot"></span>
-                            <span class="status-text" id="statusText">Online &amp; Ready to Help</span>
-                        </div>
-                    </div>
-                </div>
-                <button class="clear-btn" id="clearBtn" title="Clear conversation">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 6H5H21M8 6V4C8 3.47 8.21 2.96 8.59 2.59C8.96 2.21 9.47 2 10 2H14C14.53 2 15.04 2.21 15.41 2.59C15.79 2.96 16 3.47 16 4V6M19 6V20C19 20.53 18.79 21.04 18.41 21.41C18.04 21.79 17.53 22 17 22H7C6.47 22 5.96 21.79 5.59 21.41C5.21 21.04 5 20.53 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <span>Clear</span>
+                <button id="themeToggleBtn" class="header-icon-btn" title="Toggle Theme" aria-label="Toggle theme">
+                    <i class="fas fa-moon"></i>
                 </button>
-            </header>
-
-            <!-- Chat messages -->
-            <div class="chat-container" id="chatContainer">
-                <div class="welcome-section" id="welcomeSection">
-                    <div class="welcome-pulse">
-                        <div class="pulse-ring"></div>
-                        <div class="pulse-icon">
-                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2v-5h2v5zm0-7h-2V7h2v2z" fill="currentColor"/></svg>
-                        </div>
-                    </div>
-                    <h2>Hello! I'm <span class="gradient-text">MedAI</span></h2>
-                    <p>Your AI-powered medical assistant. Ask me anything about symptoms, medications, conditions, or general health — I'll give you accurate, structured answers.</p>
-                    <div class="feature-pills">
-                        <span class="pill">🩺 Symptoms & Conditions</span>
-                        <span class="pill">💊 Medication Info</span>
-                        <span class="pill">❤️ Wellness Tips</span>
-                        <span class="pill">🏥 Preventive Care</span>
-                        <span class="pill">⚕️ Evidence-Based</span>
-                    </div>
-                    <p class="welcome-hint">Try clicking a quick question on the left, or type below ↓</p>
+                <button id="clearBtn" class="header-icon-btn danger-btn" title="Clear Conversation" aria-label="Clear chat">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+                <div class="user-pill">
+                    <i class="fas fa-user-circle"></i>
+                    <span>{{ session.username }}</span>
                 </div>
+                <a href="{{ url_for('logout') }}" class="logout-btn" title="Sign out">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </a>
             </div>
+        </header>
 
-            <!-- Input area -->
-            <div class="input-area">
-                <div class="input-wrapper">
-                    <textarea
-                        id="userInput"
-                        placeholder="Ask about symptoms, medications, conditions..."
-                        rows="1"
-                        maxlength="2000"
-                    ></textarea>
-                    <button id="sendBtn" class="send-btn" title="Send message">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
+        <!-- Chat Container -->
+        <div id="chatContainer" class="chat-container" role="log" aria-live="polite" aria-label="Chat messages" style="display: flex; flex-direction: column; height: 100%;">
+
+            <!-- Welcome Section -->
+            <div class="welcome-section" id="welcomeSection" style="margin: auto; width: 100%; max-width: 700px;">
+                <div class="welcome-pulse">
+                    <div class="pulse-ring"></div>
+                    <div class="pulse-icon">
+                        <i class="fas fa-heartbeat" style="font-size:1.8rem;color:white;"></i>
+                    </div>
+                </div>
+                <h2>Hello, <span class="gradient-text">{{ session.username }}!</span></h2>
+                <p>I'm your AI-powered Medical Assistant. Ask me anything about symptoms, medications, treatments, or general health — I'll give you accurate, evidence-based answers.</p>
+
+                <div class="feature-pills">
+                    <span class="pill" data-query="What are the early symptoms of diabetes?">🩸 Diabetes Symptoms</span>
+                    <span class="pill" data-query="How to lower blood pressure naturally?">❤️ Blood Pressure</span>
+                    <span class="pill" data-query="Best diet for heart health?">🥗 Heart Health</span>
+                    <span class="pill" data-query="How to improve sleep quality?">😴 Sleep Tips</span>
+                    <span class="pill" data-query="What are signs of vitamin deficiency?">💊 Vitamins</span>
+                </div>
+
+                <p class="welcome-hint">
+                    <i class="fas fa-exclamation-triangle" style="color:var(--warning);margin-right:6px;"></i>
+                    For educational purposes only. Always consult a qualified healthcare professional.
+                </p>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <div class="input-wrapper">
+                <textarea
+                    id="userInput"
+                    placeholder="Ask me anything about your health... (Press Enter to send, Shift+Enter for new line)"
+                    rows="1"
+                    maxlength="2000"
+                    aria-label="Message input"
+                    aria-multiline="true"
+                ></textarea>
+                <div class="input-actions">
+                    <span id="charCount" class="char-count">0 / 2000</span>
+                    <button id="sendBtn" class="send-btn" disabled aria-label="Send message" title="Send (Enter)">
+                        <i class="fas fa-paper-plane"></i>
                     </button>
                 </div>
-                <div class="input-footer">
-                    <span class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</span>
-                    <span class="char-count" id="charCount">0 / 2000</span>
-                </div>
             </div>
-        </main>
-    </div>
+            <p class="input-disclaimer">
+                MedAI provides educational health info — not a substitute for professional medical advice.
+            </p>
+        </div>
+    </main>
+</div>
 
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+<!-- Mobile Sidebar Overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
+
+<script src="{{ url_for('static', filename='js/ecg.js') }}"></script>
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+<script>
+    // Init Background ECG
+    initECG('bgECG', { bpm: 60, speed: 1.2, color: '#00ffe5', lineWidth: 1.5 });
+</script>
 </body>
 </html>

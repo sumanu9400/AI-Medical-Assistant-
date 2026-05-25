@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedAI — Verify Email</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body class="auth-body">
+
+    <div class="auth-bg">
+        <div class="bg-orb orb-1"></div>
+        <div class="bg-orb orb-2"></div>
+        <div class="bg-orb orb-3"></div>
+        <div class="grid-overlay"></div>
+    </div>
+
+    <!-- Centered Card Layout for OTP -->
+    <div class="auth-center">
+        <div class="auth-card otp-card">
+            <!-- OTP Icon -->
+            <div class="otp-icon-wrap">
+                <div class="otp-icon-pulse"></div>
+                <div class="otp-icon">
+                    <i class="fas fa-envelope-open-text"></i>
+                </div>
+            </div>
+
+            <div class="auth-card-header">
+                <h2>Check Your Email</h2>
+                <p>We sent a 6-digit verification code to your email address. Enter it below to activate your account.</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}" id="flashAlert">
+                        <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' if category == 'error' else 'info-circle' }}"></i>
+                        <span>{{ message }}</span>
+                        <button class="alert-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('verify_otp') }}" id="otpForm" novalidate>
+                <!-- 6-Box OTP Input -->
+                <div class="otp-label">
+                    <i class="fas fa-key"></i> Verification Code
+                </div>
+                <div class="otp-boxes" id="otpBoxes">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" id="otp0" autocomplete="off">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" id="otp1" autocomplete="off">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" id="otp2" autocomplete="off">
+                    <span class="otp-divider">—</span>
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" id="otp3" autocomplete="off">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" id="otp4" autocomplete="off">
+                    <input type="text" class="otp-box" maxlength="1" pattern="[0-9]" inputmode="numeric" id="otp5" autocomplete="off">
+                </div>
+                <!-- Hidden input that holds the full OTP value -->
+                <input type="hidden" name="otp" id="otpHidden">
+                <span class="field-error" id="otpErr" style="text-align:center;display:block;"></span>
+
+                <!-- Timer & Resend -->
+                <div class="otp-timer-row">
+                    <span id="timerText">Code expires in <strong id="countdown">05:00</strong></span>
+                    <a href="{{ url_for('resend_otp') }}" id="resendLink" class="resend-link disabled">
+                        <i class="fas fa-redo"></i> Resend Code <span id="resendTimer">(30s)</span>
+                    </a>
+                </div>
+
+                <button type="submit" class="auth-btn" id="otpBtn">
+                    <span class="btn-text"><i class="fas fa-check-circle"></i> Verify & Activate Account</span>
+                    <span class="btn-loader" style="display:none;"><i class="fas fa-circle-notch fa-spin"></i> Verifying...</span>
+                </button>
+            </form>
+
+            <div class="otp-back-row">
+                <a href="{{ url_for('register') }}" class="back-link">
+                    <i class="fas fa-arrow-left"></i> Back to Registration
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const boxes = document.querySelectorAll('.otp-box');
+
+        // Auto-advance and auto-back behavior
+        boxes.forEach((box, i) => {
+            box.addEventListener('input', (e) => {
+                // Only allow digits
+                box.value = box.value.replace(/[^0-9]/g, '');
+                if (box.value && i < boxes.length - 1) {
+                    boxes[i + 1].focus();
+                }
+                updateHidden();
+            });
+
+            box.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !box.value && i > 0) {
+                    boxes[i - 1].focus();
+                    boxes[i - 1].value = '';
+                    updateHidden();
+                }
+                if (e.key === 'ArrowLeft' && i > 0) boxes[i - 1].focus();
+                if (e.key === 'ArrowRight' && i < boxes.length - 1) boxes[i + 1].focus();
+            });
+
+            // Handle paste event on first box
+            box.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const pasted = e.clipboardData.getData('text').replace(/\D/g, '');
+                pasted.split('').slice(0, 6).forEach((char, j) => {
+                    if (boxes[j]) boxes[j].value = char;
+                });
+                updateHidden();
+                // Focus last filled box
+                const lastIdx = Math.min(pasted.length - 1, 5);
+                if (boxes[lastIdx]) boxes[lastIdx].focus();
+            });
+        });
+
+        function updateHidden() {
+            const val = Array.from(boxes).map(b => b.value).join('');
+            document.getElementById('otpHidden').value = val;
+        }
+
+        // Focus first box on load
+        window.addEventListener('DOMContentLoaded', () => boxes[0].focus());
+
+        // Form submit
+        document.getElementById('otpForm').addEventListener('submit', function(e) {
+            const val = document.getElementById('otpHidden').value;
+            if (val.length !== 6 || !/^\d{6}$/.test(val)) {
+                e.preventDefault();
+                document.getElementById('otpErr').textContent = 'Please enter all 6 digits of your verification code.';
+                boxes.forEach(b => b.classList.add('error-shake'));
+                setTimeout(() => boxes.forEach(b => b.classList.remove('error-shake')), 600);
+                return;
+            }
+            const btn = document.getElementById('otpBtn');
+            btn.querySelector('.btn-text').style.display = 'none';
+            btn.querySelector('.btn-loader').style.display = 'flex';
+            btn.disabled = true;
+        });
+
+        // Countdown — 5 minutes
+        let totalSeconds = 300;
+        const countdownEl = document.getElementById('countdown');
+        const timerInterval = setInterval(() => {
+            totalSeconds--;
+            if (totalSeconds <= 0) {
+                clearInterval(timerInterval);
+                countdownEl.textContent = '00:00';
+                document.getElementById('timerText').textContent = 'Code has expired. Please resend.';
+                return;
+            }
+            const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+            const s = String(totalSeconds % 60).padStart(2, '0');
+            countdownEl.textContent = `${m}:${s}`;
+        }, 1000);
+
+        // Resend cooldown — 30 seconds
+        let resendSeconds = 30;
+        const resendLink = document.getElementById('resendLink');
+        const resendTimerEl = document.getElementById('resendTimer');
+        const resendInterval = setInterval(() => {
+            resendSeconds--;
+            if (resendSeconds <= 0) {
+                clearInterval(resendInterval);
+                resendLink.classList.remove('disabled');
+                resendTimerEl.textContent = '';
+            } else {
+                resendTimerEl.textContent = `(${resendSeconds}s)`;
+            }
+        }, 1000);
+
+        // Prevent clicking disabled resend link
+        resendLink.addEventListener('click', (e) => {
+            if (resendLink.classList.contains('disabled')) e.preventDefault();
+        });
+
+        // Flash auto-dismiss
+        setTimeout(() => {
+            const alert = document.getElementById('flashAlert');
+            if (alert) { alert.style.opacity = '0'; setTimeout(() => alert && alert.remove(), 300); }
+        }, 5000);
+    </script>
+</body>
+</html>

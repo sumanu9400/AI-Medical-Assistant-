@@ -1,166 +1,402 @@
-// MedAI - Medical AI Assistant Frontend
-// Real-time streaming, markdown rendering, sidebar, timestamps
-
-// ========== DOM Elements ==========
-const chatContainer = document.getElementById('chatContainer');
-const userInput = document.getElementById('userInput');
-const sendBtn = document.getElementById('sendBtn');
-const clearBtn = document.getElementById('clearBtn');
-const statusDot = document.getElementById('statusDot');
-const statusText = document.getElementById('statusText');
-const charCount = document.getElementById('charCount');
-const sidebarToggle = document.getElementById('sidebarToggle');
-const sidebar = document.getElementById('sidebar');
-const welcomeSection = document.getElementById('welcomeSection');
+// MedAI — Complete Frontend Logic
+// Fixes: null checks, correct DOM IDs, robust SSE, history, PDF
 
 // ========== Configure marked.js ==========
 if (typeof marked !== 'undefined') {
-    marked.setOptions({
-        breaks: true,
-        gfm: true,
-        sanitize: false
-    });
+    marked.setOptions({ breaks: true, gfm: true });
 }
 
 // ========== State ==========
 let isProcessing = false;
-let sidebarOpen = true;
+let currentSessionId = null;
+let allSessions = [];
+let sidebarOpen = window.innerWidth > 768;
+
+// ========== DOM — with null-safe getters ==========
+const get = (id) => document.getElementById(id);
+
+const chatContainer  = get('chatContainer');
+const userInput      = get('userInput');
+const sendBtn        = get('sendBtn');
+const clearBtn       = get('clearBtn');
+const statusDot      = get('statusDot');
+const statusText     = get('statusText');
+const charCount      = get('charCount');
+const sidebar        = get('sidebar');
+const sidebarToggle  = get('sidebarToggle');
+const sidebarOverlay = get('sidebarOverlay');
+const newChatBtn     = get('newChatBtn');
+const historyList    = get('historyList');
+const historySearch  = get('historySearch');
+const welcomeSection = get('welcomeSection');
+const toastContainer = get('toastContainer');
 
 // ========== Init ==========
 document.addEventListener('DOMContentLoaded', () => {
-    setupEventListeners();
-    adjustTextareaHeight();
-    userInput.focus();
+    if (userInput) { adjustTextareaHeight(); userInput.focus(); }
     checkHealth();
+    fetchSessions();
+    setupEventListeners();
+    // Restore sidebar state on desktop
+    if (window.innerWidth <= 768 && sidebar) {
+        sidebar.classList.remove('open');
+        sidebarOpen = false;
+    }
 });
 
 // ========== Health Check ==========
 async function checkHealth() {
     try {
         const res = await fetch('/api/health');
+        if (!res.ok) throw new Error('non-200');
         const data = await res.json();
         if (data.status !== 'ok' || data.llm !== 'ready') {
-            setStatus('Service issue — check API key', false);
+            setStatus('AI service issue — check API key', false);
         }
-    } catch (e) {
+    } catch {
         setStatus('Cannot connect to server', false);
     }
 }
 
 function setStatus(text, ready = true) {
-    statusText.textContent = text;
-    statusDot.className = 'status-dot' + (ready ? '' : ' thinking');
+    if (statusText) statusText.textContent = text;
+    if (statusDot) {
+        statusDot.className = 'status-dot' + (ready ? '' : ' thinking');
+    }
 }
 
 // ========== Event Listeners ==========
 function setupEventListeners() {
-    sendBtn.addEventListener('click', handleSend);
-    clearBtn.addEventListener('click', handleClear);
+    if (sendBtn) sendBtn.addEventListener('click', handleSend);
 
-    userInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
+    if (userInput) {
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+        });
+        userInput.addEventListener('input', () => {
+            adjustTextareaHeight();
+            updateCharCount();
+            if (sendBtn) sendBtn.disabled = !userInput.value.trim() || isProcessing;
+        });
+    }
+
+    if (sidebarToggle) sidebarToggle.addEventListener('click', toggleSidebar);
+    if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebarMobile);
+
+    if (newChatBtn) newChatBtn.addEventListener('click', startNewChat);
+
+    if (historySearch) {
+        historySearch.addEventListener('input', (e) => renderSessions(e.target.value || ''));
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            if (!confirm('Clear this conversation from view?')) return;
+            currentSessionId = null;
+            if (chatContainer) {
+                chatContainer.innerHTML = '';
+                if (welcomeSection) {
+                    welcomeSection.style.opacity = '1';
+                    chatContainer.appendChild(welcomeSection);
+                }
+            }
+            renderSessions();
+        });
+    }
+
+    // Theme toggle
+    const themeBtn = get('themeToggleBtn');
+    if (themeBtn) {
+        if (localStorage.getItem('medai_theme') === 'light') {
+            document.body.classList.add('light-mode');
+            themeBtn.querySelector('i').className = 'fas fa-sun';
         }
-    });
+        themeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('light-mode');
+            const isLight = document.body.classList.contains('light-mode');
+            localStorage.setItem('medai_theme', isLight ? 'light' : 'dark');
+            themeBtn.querySelector('i').className = isLight ? 'fas fa-sun' : 'fas fa-moon';
+            showToast(`Switched to ${isLight ? 'Light' : 'Dark'} mode`, 'info');
+        });
+    }
 
-    userInput.addEventListener('input', () => {
-        adjustTextareaHeight();
-        updateCharCount();
-    });
+    // PDF Download
+    const pdfBtn = get('pdfBtn');
+    if (pdfBtn) {
+        pdfBtn.addEventListener('click', () => {
+            if (typeof html2pdf === 'undefined') { showToast('PDF library not loaded', 'error'); return; }
+            if (!chatContainer || !chatContainer.querySelector('.message')) {
+                showToast('No messages to export', 'error'); return;
+            }
+            showToast('Generating PDF...', 'info');
+            const opt = {
+                margin: 10,
+                filename: 'MedAI-Chat.pdf',
+                image: { type: 'jpeg', quality: 0.95 },
+                html2canvas: { scale: 2, backgroundColor: '#0a0e1a' },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            html2pdf().set(opt).from(chatContainer).save()
+                .then(() => showToast('PDF downloaded!', 'success'))
+                .catch(() => showToast('PDF export failed', 'error'));
+        });
+    }
 
-    sidebarToggle.addEventListener('click', toggleSidebar);
-
-    // Quick chips
-    document.querySelectorAll('.chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            const query = chip.dataset.query;
+    // Quick chips (.chip) and welcome pills (.pill)
+    document.querySelectorAll('.chip, .pill').forEach(el => {
+        el.addEventListener('click', () => {
+            const query = el.dataset.query;
+            if (!query || !userInput) return;
             userInput.value = query;
             adjustTextareaHeight();
             updateCharCount();
+            if (sendBtn) sendBtn.disabled = false;
             userInput.focus();
             handleSend();
-            // On mobile, close sidebar after chip click
-            if (window.innerWidth <= 768) {
-                sidebar.classList.remove('open');
-                sidebarOpen = false;
-            }
+            if (window.innerWidth <= 768) closeSidebarMobile();
         });
     });
 
-    // Close sidebar on overlay click (mobile)
-    document.addEventListener('click', (e) => {
-        if (window.innerWidth <= 768 && sidebarOpen) {
-            if (!sidebar.contains(e.target) && !sidebarToggle.contains(e.target)) {
-                sidebar.classList.remove('open');
-                sidebarOpen = false;
-            }
+    // Window resize
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 768 && sidebar) {
+            sidebar.classList.remove('open');
+            if (sidebarOverlay) sidebarOverlay.classList.remove('active');
         }
     });
 }
 
 // ========== Sidebar Toggle ==========
 function toggleSidebar() {
+    if (!sidebar) return;
     if (window.innerWidth <= 768) {
         sidebarOpen = !sidebarOpen;
         sidebar.classList.toggle('open', sidebarOpen);
+        if (sidebarOverlay) sidebarOverlay.classList.toggle('active', sidebarOpen);
     } else {
         sidebarOpen = !sidebarOpen;
         sidebar.classList.toggle('collapsed', !sidebarOpen);
     }
 }
 
-// ========== Handle Send ==========
-async function handleSend() {
-    const message = userInput.value.trim();
-    if (!message || isProcessing) return;
-
-    // Hide welcome
-    if (welcomeSection) {
-        welcomeSection.style.transition = 'opacity 0.3s';
-        welcomeSection.style.opacity = '0';
-        setTimeout(() => welcomeSection.remove(), 300);
-    }
-
-    // Clear input
-    userInput.value = '';
-    adjustTextareaHeight();
-    charCount.textContent = '0 / 2000';
-    charCount.className = 'char-count';
-
-    // Add user message
-    addMessage(message, 'user');
-
-    // Lock UI
-    setProcessing(true);
-
-    // Stream from server
-    await streamResponse(message);
-
-    // Unlock UI
-    setProcessing(false);
-    userInput.focus();
+function closeSidebarMobile() {
+    sidebarOpen = false;
+    if (sidebar) sidebar.classList.remove('open');
+    if (sidebarOverlay) sidebarOverlay.classList.remove('active');
 }
 
-// ========== Streaming ==========
-async function streamResponse(message) {
-    // Create bot message bubble
-    const { msgEl, contentEl } = createBotBubble();
+// ========== Chat History ==========
+async function fetchSessions() {
+    try {
+        const res = await fetch('/api/sessions');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && Array.isArray(data.sessions)) {
+            allSessions = data.sessions;
+            renderSessions();
+        }
+    } catch (e) {
+        console.error('fetchSessions error:', e);
+    }
+}
+
+function renderSessions(filterText = '') {
+    if (!historyList) return;
+    historyList.innerHTML = '';
+
+    const filtered = allSessions.filter(s =>
+        (s.title || '').toLowerCase().includes(filterText.toLowerCase())
+    );
+
+    if (filtered.length === 0) {
+        historyList.innerHTML = `
+            <div class="empty-history" id="emptyHistory">
+                <i class="fas fa-comment-slash" style="font-size:1.5rem;opacity:0.3;margin-bottom:8px;"></i>
+                <p>${filterText ? 'No matching chats' : 'No conversations yet'}</p>
+            </div>`;
+        return;
+    }
+
+    filtered.forEach(session => {
+        const item = document.createElement('div');
+        item.className = `history-item ${session.id === currentSessionId ? 'active' : ''}`;
+        item.setAttribute('role', 'listitem');
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'history-title';
+        titleSpan.textContent = session.title || 'Untitled Chat';
+        titleSpan.title = session.title || '';
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'history-actions';
+
+        // Rename button
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'history-action-btn rename';
+        renameBtn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+        renameBtn.title = 'Rename';
+        renameBtn.onclick = (e) => { e.stopPropagation(); renameSession(session.id, session.title); };
+
+        // Delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'history-action-btn delete';
+        deleteBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+        deleteBtn.title = 'Delete';
+        deleteBtn.onclick = (e) => { e.stopPropagation(); deleteSession(session.id); };
+
+        actionsDiv.appendChild(renameBtn);
+        actionsDiv.appendChild(deleteBtn);
+        item.appendChild(titleSpan);
+        item.appendChild(actionsDiv);
+        item.addEventListener('click', () => loadSession(session.id));
+        historyList.appendChild(item);
+    });
+}
+
+function startNewChat() {
+    currentSessionId = null;
+    if (chatContainer) {
+        chatContainer.innerHTML = '';
+        if (welcomeSection) {
+            welcomeSection.style.opacity = '1';
+            chatContainer.appendChild(welcomeSection);
+        }
+    }
+    renderSessions(historySearch ? (historySearch.value || '') : '');
+    if (userInput) userInput.focus();
+    if (window.innerWidth <= 768) closeSidebarMobile();
+}
+
+async function loadSession(sessionId) {
+    if (!sessionId) return;
+    currentSessionId = sessionId;
+    renderSessions(historySearch ? (historySearch.value || '') : '');
+    if (window.innerWidth <= 768) closeSidebarMobile();
+
+    if (chatContainer) chatContainer.innerHTML = '';
+    setStatus('Loading chat...', true);
+    isProcessing = true;
+
+    try {
+        const res = await fetch(`/api/sessions/${sessionId}/messages`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.success && Array.isArray(data.messages)) {
+            data.messages.forEach(msg => {
+                const role = (msg.role || '').toLowerCase();
+                const sender = role === 'user' ? 'user' : 'bot';
+                const content = msg.content || '';
+                const { msgEl, contentEl } = addMessage(content, sender, msg.id);
+                if (sender === 'bot') {
+                    renderMarkdown(contentEl, content);
+                    addMessageActions(msgEl, content);
+                }
+            });
+            scrollToBottom();
+        }
+    } catch (e) {
+        console.error('loadSession error:', e);
+        showToast('Failed to load chat', 'error');
+    } finally {
+        isProcessing = false;
+        setStatus('Online & Ready to Help', true);
+        if (userInput) userInput.focus();
+    }
+}
+
+async function deleteSession(sessionId) {
+    if (!confirm('Delete this conversation permanently?')) return;
+    try {
+        const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Conversation deleted', 'success');
+            if (currentSessionId === sessionId) startNewChat();
+            allSessions = allSessions.filter(s => s.id !== sessionId);
+            renderSessions(historySearch ? (historySearch.value || '') : '');
+        }
+    } catch (e) {
+        showToast('Failed to delete', 'error');
+    }
+}
+
+async function renameSession(sessionId, currentTitle) {
+    const newTitle = prompt('Rename conversation:', currentTitle || '');
+    if (!newTitle || !newTitle.trim()) return;
+    try {
+        const res = await fetch(`/api/sessions/${sessionId}/rename`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle.trim() })
+        });
+        const data = await res.json();
+        if (data.success) {
+            const s = allSessions.find(x => x.id === sessionId);
+            if (s) s.title = newTitle.trim();
+            renderSessions(historySearch ? (historySearch.value || '') : '');
+            showToast('Renamed successfully', 'success');
+        }
+    } catch {
+        showToast('Rename failed', 'error');
+    }
+}
+
+// ========== Handle Send ==========
+async function handleSend() {
+    if (!userInput) return;
+    const message = (userInput.value || '').trim();
+    if (!message || isProcessing) return;
+
+    // Hide welcome section
+    if (welcomeSection && welcomeSection.parentNode === chatContainer) {
+        welcomeSection.style.transition = 'opacity 0.3s';
+        welcomeSection.style.opacity = '0';
+        setTimeout(() => { if (welcomeSection.parentNode) welcomeSection.parentNode.removeChild(welcomeSection); }, 300);
+    }
+
+    userInput.value = '';
+    adjustTextareaHeight();
+    if (charCount) charCount.textContent = '0 / 2000';
+
+    addMessage(message, 'user');
+    setProcessing(true);
+
+    await streamResponse(message);
+
+    setProcessing(false);
+    if (userInput) userInput.focus();
+}
+
+// ========== SSE Streaming ==========
+async function streamResponse(message, editMessageId = null) {
+    // 1. Add "Thinking" indicator first
+    const { msgEl, contentEl } = addMessage('', 'bot');
+    contentEl.innerHTML = `
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>
+    `;
 
     let fullText = '';
-    let cursorEl = document.createElement('span');
+    let firstTokenReceived = false;
+    const cursorEl = document.createElement('span');
     cursorEl.className = 'streaming-cursor';
-    contentEl.appendChild(cursorEl);
+
+    const payload = { message, session_id: currentSessionId };
+    if (editMessageId) payload.edit_message_id = editMessageId;
 
     try {
         const response = await fetch('/api/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message })
+            body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
         }
 
         const reader = response.body.getReader();
@@ -173,93 +409,167 @@ async function streamResponse(message) {
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
-            buffer = lines.pop(); // keep incomplete line
+            buffer = lines.pop() || '';  // keep incomplete line
 
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const raw = line.slice(6).trim();
-                    if (!raw) continue;
-                    try {
-                        const payload = JSON.parse(raw);
-                        if (payload.token) {
-                            fullText += payload.token;
-                            // Live update: render raw text while streaming
-                            contentEl.innerHTML = escapeStreamingText(fullText);
-                            contentEl.appendChild(cursorEl);
-                            scrollToBottom();
-                        } else if (payload.done) {
-                            // Streaming finished — render full markdown
-                            cursorEl.remove();
-                            renderMarkdown(contentEl, fullText);
-                            addMessageActions(msgEl, fullText);
-                            scrollToBottom();
-                        } else if (payload.error) {
-                            cursorEl.remove();
-                            contentEl.innerHTML = `<span style="color:#ef4444;">Error: ${payload.error}</span>`;
-                        }
-                    } catch (parseErr) {
-                        // Ignore malformed lines
+                if (!line.startsWith('data: ')) continue;
+                const raw = line.slice(6).trim();
+                if (!raw) continue;
+                try {
+                    const payload = JSON.parse(raw);
+
+                    if (payload.error) {
+                        if (cursorEl.parentNode) cursorEl.remove();
+                        contentEl.innerHTML = `<span style="color:#ef4444;">⚠ ${payload.error}</span>`;
+                        return;
                     }
-                }
+
+                    if (payload.session_id && !payload.done) {
+                        // New session created
+                        currentSessionId = payload.session_id;
+                        // Add to local sessions list
+                        if (!allSessions.find(s => s.id === payload.session_id)) {
+                            allSessions.unshift({ id: payload.session_id, title: payload.title || message.slice(0, 35), updated_at: new Date().toISOString() });
+                            renderSessions(historySearch ? (historySearch.value || '') : '');
+                        }
+                    } else if (payload.token) {
+                        if (!firstTokenReceived) {
+                            firstTokenReceived = true;
+                            contentEl.innerHTML = '';
+                            contentEl.appendChild(cursorEl);
+                        }
+                        fullText += payload.token;
+                        // Replace the content with current text + cursor
+                        // We use a temporary container to render then append cursor for better UX
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = escapeStreamingText(fullText);
+                        contentEl.innerHTML = tempDiv.innerHTML;
+                        contentEl.appendChild(cursorEl);
+                        scrollToBottom();
+                    } else if (payload.done) {
+                        if (cursorEl.parentNode) cursorEl.remove();
+                        renderMarkdown(contentEl, fullText);
+                        addMessageActions(msgEl, fullText);
+                        scrollToBottom();
+                        // Refresh session list
+                        fetchSessions();
+                    }
+                } catch { /* ignore malformed JSON lines */ }
             }
         }
 
-        // Fallback: if stream ended without 'done' signal
+        // Fallback: stream ended without done signal
         if (cursorEl.parentNode) {
             cursorEl.remove();
-            renderMarkdown(contentEl, fullText);
-            addMessageActions(msgEl, fullText);
+            if (fullText) {
+                renderMarkdown(contentEl, fullText);
+                addMessageActions(msgEl, fullText);
+            }
             scrollToBottom();
         }
 
     } catch (err) {
-        console.error('Streaming error:', err);
-        cursorEl.remove();
+        console.error('streamResponse error:', err);
+        if (cursorEl.parentNode) cursorEl.remove();
         if (fullText) {
             renderMarkdown(contentEl, fullText);
             addMessageActions(msgEl, fullText);
         } else {
-            contentEl.innerHTML = '<span style="color:#ef4444;">Sorry, I had trouble connecting. Please try again.</span>';
+            contentEl.innerHTML = '<span style="color:#ef4444;">⚠ Connection error. Please try again.</span>';
         }
         scrollToBottom();
+        showToast(err.message || 'Streaming failed', 'error');
     }
 }
 
-// ========== Create Bot Bubble ==========
-function createBotBubble() {
+// ========== Add Message Bubble ==========
+function addMessage(text, sender, msgId = null) {
+    const isBot = sender === 'bot';
     const msgEl = document.createElement('div');
-    msgEl.className = 'message bot';
+    msgEl.className = `message ${sender}`;
 
     const avatarEl = document.createElement('div');
     avatarEl.className = 'msg-avatar';
-    avatarEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2v-5h2v5zm0-7h-2V7h2v2z" fill="currentColor"/></svg>`;
+    avatarEl.innerHTML = isBot
+        ? '<i class="fas fa-heartbeat" style="font-size:12px;"></i>'
+        : '<i class="fas fa-user"></i>';
 
     const bodyEl = document.createElement('div');
     bodyEl.className = 'msg-body';
 
     const contentEl = document.createElement('div');
     contentEl.className = 'message-content';
+    if (text) contentEl.textContent = text;
 
     bodyEl.appendChild(contentEl);
-    msgEl.appendChild(avatarEl);
-    msgEl.appendChild(bodyEl);
-    chatContainer.appendChild(msgEl);
-    scrollToBottom();
 
+    // Edit button for user messages with DB ID
+    if (sender === 'user' && msgId) {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'edit-btn';
+        editBtn.innerHTML = '<i class="fas fa-pencil-alt" style="font-size:10px;"></i>';
+        editBtn.title = 'Edit & Resend';
+        editBtn.onclick = () => renderEditInterface(contentEl, msgId, text);
+        bodyEl.appendChild(editBtn);
+    }
+
+    msgEl.appendChild(isBot ? avatarEl : document.createElement('div'));
+    if (!isBot) msgEl.insertBefore(bodyEl, msgEl.firstChild);
+    else msgEl.appendChild(bodyEl);
+
+    // Fix: for user messages avatar on right, bot on left
+    if (isBot) {
+        msgEl.insertBefore(avatarEl, bodyEl);
+    }
+
+    if (chatContainer) { chatContainer.appendChild(msgEl); scrollToBottom(); }
     return { msgEl, contentEl, bodyEl };
 }
 
-// ========== Render Markdown ==========
+function renderEditInterface(contentEl, msgId, originalText) {
+    contentEl.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'edit-mode-wrap';
+    const textarea = document.createElement('textarea');
+    textarea.className = 'edit-textarea';
+    textarea.value = originalText || '';
+    const actions = document.createElement('div');
+    actions.className = 'edit-actions';
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'edit-save';
+    saveBtn.textContent = 'Save & Resend';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'edit-cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => { contentEl.textContent = originalText || ''; };
+    saveBtn.onclick = async () => {
+        const newText = (textarea.value || '').trim();
+        if (!newText) { showToast('Query cannot be empty', 'error'); return; }
+        if (chatContainer) chatContainer.innerHTML = '';
+        setProcessing(true);
+        await streamResponse(newText, msgId);
+        setProcessing(false);
+        if (currentSessionId) loadSession(currentSessionId);
+    };
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    wrap.appendChild(textarea);
+    wrap.appendChild(actions);
+    contentEl.appendChild(wrap);
+}
+
+// ========== Markdown & Formatting ==========
 function renderMarkdown(el, text) {
-    if (typeof marked !== 'undefined') {
+    if (!el) return;
+    if (typeof marked !== 'undefined' && text) {
         el.innerHTML = marked.parse(text);
     } else {
-        el.innerHTML = formatFallback(text);
+        el.textContent = text || '';
     }
 }
 
-// Lightweight escape for live streaming (before markdown is applied)
 function escapeStreamingText(text) {
+    if (typeof text !== 'string') return '';
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -267,129 +577,86 @@ function escapeStreamingText(text) {
         .replace(/\n/g, '<br>');
 }
 
-// Fallback formatter if marked is not loaded
-function formatFallback(text) {
-    return text
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-        .replace(/`(.*?)`/g, '<code>$1</code>')
-        .replace(/\n/g, '<br>');
-}
-
-// ========== Add Message Actions (timestamp + copy) ==========
+// ========== Message Actions (timestamp + copy) ==========
 function addMessageActions(msgEl, text) {
+    if (!msgEl) return;
     const bodyEl = msgEl.querySelector('.msg-body');
     if (!bodyEl) return;
 
     const actionsEl = document.createElement('div');
     actionsEl.className = 'msg-actions';
 
-    // Timestamp
     const timeEl = document.createElement('span');
     timeEl.className = 'msg-time';
     timeEl.textContent = getTime();
     actionsEl.appendChild(timeEl);
 
-    // Copy button
     const copyBtn = document.createElement('button');
     copyBtn.className = 'copy-btn';
     copyBtn.title = 'Copy response';
-    copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.242a2 2 0 00-.602-1.43L16.083 2.57A2 2 0 0014.685 2H10a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 18v2a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
+    copyBtn.innerHTML = '<i class="fas fa-copy" style="font-size:11px;"></i>';
     copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(text).then(() => {
+        navigator.clipboard.writeText(text || '').then(() => {
+            copyBtn.innerHTML = '<i class="fas fa-check" style="font-size:11px;"></i>';
             copyBtn.classList.add('copied');
-            copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+            showToast('Copied to clipboard', 'success');
             setTimeout(() => {
+                copyBtn.innerHTML = '<i class="fas fa-copy" style="font-size:11px;"></i>';
                 copyBtn.classList.remove('copied');
-                copyBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.242a2 2 0 00-.602-1.43L16.083 2.57A2 2 0 0014.685 2H10a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 18v2a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h2" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
             }, 2000);
-        });
+        }).catch(() => showToast('Copy failed', 'error'));
     });
     actionsEl.appendChild(copyBtn);
-
     bodyEl.appendChild(actionsEl);
 }
 
-// ========== Add User Message ==========
-function addMessage(text, type) {
-    const msgEl = document.createElement('div');
-    msgEl.className = `message ${type}`;
-
-    const avatarEl = document.createElement('div');
-    avatarEl.className = 'msg-avatar';
-    avatarEl.textContent = type === 'user' ? 'You' : 'AI';
-
-    const bodyEl = document.createElement('div');
-    bodyEl.className = 'msg-body';
-
-    const contentEl = document.createElement('div');
-    contentEl.className = 'message-content';
-    contentEl.textContent = text;
-
-    const actionsEl = document.createElement('div');
-    actionsEl.className = 'msg-actions';
-    const timeEl = document.createElement('span');
-    timeEl.className = 'msg-time';
-    timeEl.textContent = getTime();
-    actionsEl.appendChild(timeEl);
-
-    bodyEl.appendChild(contentEl);
-    bodyEl.appendChild(actionsEl);
-
-    if (type === 'user') {
-        msgEl.appendChild(bodyEl);
-        msgEl.appendChild(avatarEl);
+// ========== Processing State ==========
+function setProcessing(active) {
+    isProcessing = active;
+    if (sendBtn) sendBtn.disabled = active;
+    if (active) {
+        setStatus('AI is thinking...', false);
+        if (statusDot) statusDot.classList.add('thinking');
     } else {
-        msgEl.appendChild(avatarEl);
-        msgEl.appendChild(bodyEl);
-    }
-
-    chatContainer.appendChild(msgEl);
-    scrollToBottom();
-}
-
-// ========== Clear Conversation ==========
-async function handleClear() {
-    if (isProcessing) return;
-    if (!confirm('Clear the conversation?')) return;
-
-    try {
-        await fetch('/api/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-        location.reload();
-    } catch (e) {
-        alert('Failed to clear. Please try again.');
+        setStatus('Online & Ready to Help', true);
+        if (statusDot) statusDot.classList.remove('thinking');
     }
 }
 
 // ========== Helpers ==========
-function setProcessing(active) {
-    isProcessing = active;
-    sendBtn.disabled = active;
-    if (active) {
-        setStatus('AI is thinking...', false);
-        statusDot.classList.add('thinking');
-    } else {
-        setStatus('Online & Ready to Help', true);
-        statusDot.classList.remove('thinking');
-    }
-}
-
 function adjustTextareaHeight() {
+    if (!userInput) return;
     userInput.style.height = 'auto';
     userInput.style.height = Math.min(userInput.scrollHeight, 140) + 'px';
 }
 
 function updateCharCount() {
-    const len = userInput.value.length;
+    if (!userInput || !charCount) return;
+    const len = (userInput.value || '').length;
     charCount.textContent = `${len} / 2000`;
     charCount.className = 'char-count' + (len > 1800 ? ' danger' : len > 1500 ? ' warn' : '');
+    if (sendBtn) sendBtn.disabled = len === 0 || isProcessing;
 }
 
 function scrollToBottom() {
-    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+    if (chatContainer) {
+        chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+    }
 }
 
 function getTime() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function showToast(message, type = 'info') {
+    if (!toastContainer) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    const iconMap = { success: 'check-circle', error: 'exclamation-triangle', info: 'info-circle' };
+    toast.innerHTML = `<i class="fas fa-${iconMap[type] || 'info-circle'}"></i> <span>${message}</span>`;
+    toastContainer.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('hiding');
+        setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 350);
+    }, 3500);
 }

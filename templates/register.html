@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedAI — Create Account</title>
+    <meta name="description" content="Create your MedAI account. Get AI-powered medical information instantly.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body class="auth-body">
+
+    <div class="auth-bg">
+        <div class="bg-orb orb-1"></div>
+        <div class="bg-orb orb-2"></div>
+        <div class="bg-orb orb-3"></div>
+        <div class="grid-overlay"></div>
+        <div class="float-icon f1">🧬</div>
+        <div class="float-icon f2">💊</div>
+        <div class="float-icon f3">🩺</div>
+        <div class="float-icon f4">🧪</div>
+        <div class="float-icon f5">❤️</div>
+    </div>
+
+    <div class="auth-split">
+
+        <!-- Left Panel -->
+        <div class="auth-left">
+            <div class="auth-left-content">
+                <div class="brand-logo">
+                    <div class="logo-icon"><i class="fas fa-stethoscope"></i></div>
+                    <span class="logo-text">MedAI</span>
+                </div>
+                <h1 class="auth-hero-title">Join the Future of<br><span class="gradient-text">Healthcare AI</span></h1>
+                <p class="auth-hero-sub">Create your account in seconds and get instant access to evidence-based medical information.</p>
+
+                <div class="feature-list">
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-history"></i></div>
+                        <div>
+                            <p class="feature-title">Chat History</p>
+                            <p class="feature-desc">All your conversations saved securely</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-book-medical"></i></div>
+                        <div>
+                            <p class="feature-title">Medical Knowledge Base</p>
+                            <p class="feature-desc">WHO, NHS, Mayo Clinic guidelines</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-user-shield"></i></div>
+                        <div>
+                            <p class="feature-title">OTP Verified</p>
+                            <p class="feature-desc">Secure 2-step email verification</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ECG Pulse -->
+                <div class="ecg-wrap" style="height: 80px; margin-top: 20px;">
+                    <canvas id="authECG"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel — Register Form -->
+        <div class="auth-right">
+            <div class="auth-card">
+                <div class="auth-card-header">
+                    <h2>Create Account</h2>
+                    <p>Start your MedAI journey today</p>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" id="flashAlert">
+                            <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' if category == 'error' else 'info-circle' }}"></i>
+                            <span>{{ message }}</span>
+                            <button class="alert-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="{{ url_for('register') }}" id="registerForm" novalidate>
+
+                    <!-- Two-column row: Full Name + Username -->
+                    <div class="form-row">
+                        <div class="form-group" id="nameFieldGroup">
+                            <label for="name" class="form-label"><i class="fas fa-id-card"></i> Full Name</label>
+                            <div class="input-wrap">
+                                <input type="text" id="name" name="name" class="form-input" placeholder="John Doe" required>
+                                <div class="input-focus-line"></div>
+                            </div>
+                            <span class="field-error" id="nameErr"></span>
+                        </div>
+                        <div class="form-group" id="usernameFieldGroup">
+                            <label for="username" class="form-label"><i class="fas fa-at"></i> Username</label>
+                            <div class="input-wrap">
+                                <input type="text" id="username" name="username" class="form-input" placeholder="john_doe" required>
+                                <div class="input-focus-line"></div>
+                            </div>
+                            <span class="field-error" id="usernameErr"></span>
+                        </div>
+                    </div>
+
+                    <!-- Email -->
+                    <div class="form-group" id="emailFieldGroup">
+                        <label for="email" class="form-label"><i class="fas fa-envelope"></i> Email Address</label>
+                        <div class="input-wrap">
+                            <input type="email" id="email" name="email" class="form-input" placeholder="john@example.com" required>
+                            <div class="input-focus-line"></div>
+                        </div>
+                        <span class="field-error" id="emailErr"></span>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="form-group" id="passFieldGroup">
+                        <label for="password" class="form-label"><i class="fas fa-lock"></i> Password</label>
+                        <div class="input-wrap password-wrap">
+                            <input type="password" id="password" name="password" class="form-input" 
+                                   placeholder="Create a strong password" required>
+                            <button type="button" class="eye-toggle" id="eyeToggle1">
+                                <i class="fas fa-eye" id="eyeIcon1"></i>
+                            </button>
+                            <div class="input-focus-line"></div>
+                        </div>
+                        <!-- Password Strength Bar -->
+                        <div class="strength-bar-wrap">
+                            <div class="strength-bar" id="strengthBar">
+                                <div class="strength-fill" id="strengthFill"></div>
+                            </div>
+                            <span class="strength-label" id="strengthLabel">Enter a password</span>
+                        </div>
+                        <!-- Checklist -->
+                        <div class="pwd-checklist" id="pwdChecklist">
+                            <span class="check-item" id="ck-len"><i class="fas fa-circle"></i> 8+ characters</span>
+                            <span class="check-item" id="ck-upper"><i class="fas fa-circle"></i> Uppercase</span>
+                            <span class="check-item" id="ck-num"><i class="fas fa-circle"></i> Number</span>
+                            <span class="check-item" id="ck-sym"><i class="fas fa-circle"></i> Symbol</span>
+                        </div>
+                        <span class="field-error" id="passErr"></span>
+                    </div>
+
+                    <!-- Confirm Password -->
+                    <div class="form-group" id="confirmFieldGroup">
+                        <label for="confirm_password" class="form-label"><i class="fas fa-check-circle"></i> Confirm Password</label>
+                        <div class="input-wrap password-wrap">
+                            <input type="password" id="confirm_password" name="confirm_password" class="form-input" placeholder="Re-enter password" required>
+                            <button type="button" class="eye-toggle" id="eyeToggle2">
+                                <i class="fas fa-eye" id="eyeIcon2"></i>
+                            </button>
+                            <div class="input-focus-line"></div>
+                        </div>
+                        <span class="field-error" id="confirmErr"></span>
+                    </div>
+
+                    <button type="submit" class="auth-btn" id="registerBtn">
+                        <span class="btn-text"><i class="fas fa-user-plus"></i> Create Account & Verify Email</span>
+                        <span class="btn-loader" style="display:none;"><i class="fas fa-circle-notch fa-spin"></i> Creating account...</span>
+                    </button>
+
+                    <div class="auth-divider"><span>Already have an account?</span></div>
+                    <a href="{{ url_for('login') }}" class="auth-alt-btn">
+                        <i class="fas fa-sign-in-alt"></i> Sign In
+                    </a>
+                </form>
+            </div>
+            <p class="auth-footer-note"><i class="fas fa-lock"></i> Protected by enterprise-grade encryption</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/ecg.js') }}"></script>
+    <script>
+        // Init Real-time ECG
+        initECG('authECG', { bpm: 72, speed: 1.5 });
+
+        // Password toggles
+        function setupToggle(btnId, iconId, inputId) {
+            document.getElementById(btnId).addEventListener('click', function() {
+                const input = document.getElementById(inputId);
+                const icon = document.getElementById(iconId);
+                input.type = input.type === 'password' ? 'text' : 'password';
+                icon.className = input.type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+            });
+        }
+        setupToggle('eyeToggle1', 'eyeIcon1', 'password');
+        setupToggle('eyeToggle2', 'eyeIcon2', 'confirm_password');
+
+        // Real-time password strength
+        document.getElementById('password').addEventListener('input', function() {
+            const val = this.value;
+            const hasLen = val.length >= 8;
+            const hasUpper = /[A-Z]/.test(val);
+            const hasNum = /[0-9]/.test(val);
+            const hasSym = /[^A-Za-z0-9]/.test(val);
+
+            const checks = [hasLen, hasUpper, hasNum, hasSym];
+            const score = checks.filter(Boolean).length;
+
+            const fill = document.getElementById('strengthFill');
+            const label = document.getElementById('strengthLabel');
+            const colors = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981'];
+            const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+
+            if (val.length === 0) {
+                fill.style.width = '0%';
+                label.textContent = 'Enter a password';
+                label.style.color = 'var(--auth-muted)';
+            } else {
+                fill.style.width = (score * 25) + '%';
+                fill.style.background = colors[score - 1] || colors[0];
+                label.textContent = labels[score - 1] || 'Weak';
+                label.style.color = colors[score - 1] || colors[0];
+            }
+
+            // Checklist items
+            setCheck('ck-len', hasLen);
+            setCheck('ck-upper', hasUpper);
+            setCheck('ck-num', hasNum);
+            setCheck('ck-sym', hasSym);
+        });
+
+        function setCheck(id, pass) {
+            const el = document.getElementById(id);
+            if (pass) {
+                el.classList.add('pass');
+                el.querySelector('i').className = 'fas fa-check-circle';
+            } else {
+                el.classList.remove('pass');
+                el.querySelector('i').className = 'fas fa-circle';
+            }
+        }
+
+        // Form validation
+        document.getElementById('registerForm').addEventListener('submit', function(e) {
+            const name = document.getElementById('name').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const confirm = document.getElementById('confirm_password').value;
+
+            // Clear errors
+            ['nameErr','usernameErr','emailErr','passErr','confirmErr'].forEach(id => document.getElementById(id).textContent = '');
+            ['nameFieldGroup','usernameFieldGroup','emailFieldGroup','passFieldGroup','confirmFieldGroup'].forEach(id => document.getElementById(id).classList.remove('error'));
+
+            let valid = true;
+
+            if (!name) { setErr('nameErr', 'nameFieldGroup', 'Full name is required.'); valid = false; }
+            if (!username || username.length < 3) { setErr('usernameErr', 'usernameFieldGroup', 'Username must be at least 3 characters.'); valid = false; }
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErr('emailErr', 'emailFieldGroup', 'Enter a valid email address.'); valid = false; }
+            
+            const hasLen = password.length >= 8;
+            const hasUpper = /[A-Z]/.test(password);
+            const hasNum = /[0-9]/.test(password);
+            const hasSym = /[^A-Za-z0-9]/.test(password);
+
+            if (!hasLen || !hasUpper || !hasNum || !hasSym) {
+                setErr('passErr', 'passFieldGroup', 'Password must be 8+ chars with uppercase, number, and symbol.');
+                valid = false;
+            }
+            if (password !== confirm) { setErr('confirmErr', 'confirmFieldGroup', 'Passwords do not match.'); valid = false; }
+
+            if (!valid) { e.preventDefault(); return; }
+
+            const btn = document.getElementById('registerBtn');
+            btn.querySelector('.btn-text').style.display = 'none';
+            btn.querySelector('.btn-loader').style.display = 'flex';
+            btn.disabled = true;
+        });
+
+        function setErr(errId, groupId, msg) {
+            document.getElementById(errId).textContent = msg;
+            document.getElementById(groupId).classList.add('error');
+        }
+
+        setTimeout(() => {
+            const alert = document.getElementById('flashAlert');
+            if (alert) { alert.style.opacity = '0'; setTimeout(() => alert && alert.remove(), 300); }
+        }, 5000);
+    </script>
+</body>
+</html>

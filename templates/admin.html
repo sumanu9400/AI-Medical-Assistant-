@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedAI — Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #060d1f; color: #f1f5f9; min-height: 100vh; }
+        .admin-layout { display: flex; min-height: 100vh; }
+        .admin-sidebar {
+            width: 220px; background: rgba(255,255,255,0.04); border-right: 1px solid rgba(255,255,255,0.07);
+            padding: 24px 16px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;
+        }
+        .admin-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+        .admin-brand-icon { width: 36px; height: 36px; background: linear-gradient(135deg,#06b6d4,#3b82f6,#8b5cf6); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 1rem; }
+        .admin-brand-name { font-size: 1.1rem; font-weight: 800; background: linear-gradient(135deg,#06b6d4,#3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .admin-nav-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: #94a3b8; text-decoration: none; font-size: 0.85rem; font-weight: 500; transition: all 0.2s; }
+        .admin-nav-link:hover, .admin-nav-link.active { background: rgba(6,182,212,0.1); color: #67e8f9; }
+        .admin-nav-link i { width: 16px; text-align: center; }
+        .admin-main { flex: 1; padding: 32px; overflow-y: auto; }
+        .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; }
+        .admin-title { font-size: 1.5rem; font-weight: 800; }
+        .admin-title span { background: linear-gradient(135deg,#06b6d4,#3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px; }
+        .stat-card {
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 14px; padding: 20px; text-align: center;
+        }
+        .stat-number { font-size: 2rem; font-weight: 800; background: linear-gradient(135deg,#06b6d4,#3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .stat-label { font-size: 0.8rem; color: #64748b; margin-top: 4px; }
+        .section-title { font-size: 1rem; font-weight: 700; color: #94a3b8; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .users-table-wrap { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: rgba(255,255,255,0.05); }
+        th { padding: 12px 16px; text-align: left; font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { padding: 12px 16px; font-size: 0.85rem; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.04); }
+        tr:hover td { background: rgba(255,255,255,0.02); color: #f1f5f9; }
+        .badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+        .badge-admin { background: rgba(139,92,246,0.2); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.3); }
+        .badge-user  { background: rgba(6,182,212,0.1);   color: #67e8f9;  border: 1px solid rgba(6,182,212,0.2); }
+        .badge-active   { background: rgba(16,185,129,0.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); }
+        .badge-inactive { background: rgba(239,68,68,0.1);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.2); }
+        .action-form { display: inline; }
+        .tbl-btn { border: none; padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+        .tbl-btn-toggle { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .tbl-btn-toggle:hover { background: rgba(245,158,11,0.3); }
+        .tbl-btn-delete { background: rgba(239,68,68,0.15); color: #f87171; }
+        .tbl-btn-delete:hover { background: rgba(239,68,68,0.3); }
+        .flash-row { margin-bottom: 20px; }
+        .back-to-app { display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.2); color: #67e8f9; border-radius: 8px; text-decoration: none; font-size: 0.85rem; font-weight: 600; transition: all 0.2s; }
+        .back-to-app:hover { background: rgba(6,182,212,0.2); }
+        .logout-link { display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #f87171; border-radius: 8px; text-decoration: none; font-size: 0.85rem; font-weight: 600; transition: all 0.2s; }
+        .logout-link:hover { background: rgba(239,68,68,0.2); }
+        .bg-orb { position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.2; pointer-events: none; z-index: 0; }
+        .orb-1 { width: 400px; height: 400px; background: radial-gradient(circle,#06b6d4,transparent 70%); top:-100px; left:-100px; }
+        .orb-2 { width: 350px; height: 350px; background: radial-gradient(circle,#8b5cf6,transparent 70%); bottom:-80px; right:-80px; }
+        .admin-layout { position: relative; z-index: 1; }
+    </style>
+</head>
+<body>
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside class="admin-sidebar">
+            <div class="admin-brand">
+                <div class="admin-brand-icon"><i class="fas fa-stethoscope"></i></div>
+                <span class="admin-brand-name">MedAI</span>
+            </div>
+            <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link active">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </a>
+            <a href="{{ url_for('index') }}" class="admin-nav-link">
+                <i class="fas fa-comments"></i> Chat App
+            </a>
+            <a href="{{ url_for('logout') }}" class="admin-nav-link" style="margin-top:auto;color:#f87171;">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </a>
+        </aside>
+
+        <!-- Main -->
+        <main class="admin-main">
+            <div class="admin-header">
+                <h1 class="admin-title">Admin <span>Dashboard</span></h1>
+                <div style="display:flex;gap:10px;">
+                    <a href="{{ url_for('index') }}" class="back-to-app">
+                        <i class="fas fa-comments"></i> Open Chat App
+                    </a>
+                    <a href="{{ url_for('logout') }}" class="logout-link">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </a>
+                </div>
+            </div>
+
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <div class="flash-row">
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        <i class="fas fa-info-circle"></i> <span>{{ message }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            {% endwith %}
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">{{ stats['user_count'] or 0 }}</div>
+                    <div class="stat-label"><i class="fas fa-users"></i> Total Users</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{{ stats['session_count'] or 0 }}</div>
+                    <div class="stat-label"><i class="fas fa-comments"></i> Chat Sessions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{{ stats['msg_count'] or 0 }}</div>
+                    <div class="stat-label"><i class="fas fa-message"></i> Total Messages</div>
+                </div>
+            </div>
+
+            <!-- Knowledge Base Section -->
+            <p class="section-title"><i class="fas fa-book-medical"></i> Knowledge Base Management</p>
+            <div class="stats-grid" style="grid-template-columns: 2fr 1fr;">
+                <div class="stat-card" style="text-align: left;">
+                    <form action="{{ url_for('admin_upload') }}" method="POST" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:center;">
+                        <div style="flex:1;">
+                            <label class="form-label" style="margin-bottom:4px;">Upload Medical PDF</label>
+                            <input type="file" name="file" accept=".pdf" class="form-input" style="padding: 8px;">
+                        </div>
+                        <button type="submit" class="auth-btn" style="margin:0; width:auto; padding: 10px 20px;">
+                            <i class="fas fa-upload"></i> Upload
+                        </button>
+                    </form>
+                </div>
+                <div class="stat-card">
+                    <form action="{{ url_for('admin_ingest') }}" method="POST">
+                        <label class="form-label" style="margin-bottom:4px; text-align:center; display:block;">Process Knowledge</label>
+                        <button type="submit" class="auth-btn" style="margin:0; background: var(--success); width:100%;">
+                            <i class="fas fa-sync"></i> Ingest & Index
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Users Table -->
+            <p class="section-title"><i class="fas fa-users"></i> Registered Users</p>
+            <div class="users-table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Joined</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.id }}</td>
+                            <td>{{ user.name or '—' }}</td>
+                            <td><strong style="color:#f1f5f9;">{{ user.username }}</strong></td>
+                            <td>{{ user.email }}</td>
+                            <td>
+                                <span class="badge {{ 'badge-admin' if user.role == 'admin' else 'badge-user' }}">
+                                    {{ user.role or 'user' }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge {{ 'badge-active' if user.is_active != 0 else 'badge-inactive' }}">
+                                    {{ 'Active' if user.is_active != 0 else 'Inactive' }}
+                                </span>
+                            </td>
+                            <td style="font-size:0.75rem;">{{ user.created_at[:10] if user.created_at else '—' }}</td>
+                            <td style="display:flex;gap:6px;flex-wrap:wrap;">
+                                {% if user.username != 'admin' %}
+                                <form action="{{ url_for('admin_toggle_user', user_id=user.id) }}" method="POST" class="action-form">
+                                    <button type="submit" class="tbl-btn tbl-btn-toggle" title="Toggle active/inactive">
+                                        <i class="fas fa-toggle-{{ 'on' if user.is_active != 0 else 'off' }}"></i>
+                                        {{ 'Deactivate' if user.is_active != 0 else 'Activate' }}
+                                    </button>
+                                </form>
+                                <form action="{{ url_for('admin_delete_user', user_id=user.id) }}" method="POST" class="action-form"
+                                      onsubmit="return confirm('Permanently delete user {{ user.username }}?')">
+                                    <button type="submit" class="tbl-btn tbl-btn-delete">
+                                        <i class="fas fa-trash-alt"></i> Delete
+                                    </button>
+                                </form>
+                                {% else %}
+                                <span style="color:#64748b;font-size:0.75rem;">Protected</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" style="text-align:center;padding:30px;color:#64748b;">
+                                No users registered yet.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

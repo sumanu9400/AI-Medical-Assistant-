@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedAI — Login</title>
+    <meta name="description" content="Sign in to MedAI, your intelligent Medical AI Assistant powered by RAG technology.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body class="auth-body">
+
+    <!-- Animated Background -->
+    <div class="auth-bg">
+        <div class="bg-orb orb-1"></div>
+        <div class="bg-orb orb-2"></div>
+        <div class="bg-orb orb-3"></div>
+        <div class="grid-overlay"></div>
+        <!-- Floating Medical Icons -->
+        <div class="float-icon f1">🧬</div>
+        <div class="float-icon f2">💊</div>
+        <div class="float-icon f3">🩺</div>
+        <div class="float-icon f4">🧪</div>
+        <div class="float-icon f5">❤️</div>
+    </div>
+
+    <!-- Split Layout -->
+    <div class="auth-split">
+
+        <!-- Left Panel — Branding -->
+        <div class="auth-left">
+            <div class="auth-left-content">
+                <div class="brand-logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-stethoscope"></i>
+                    </div>
+                    <span class="logo-text">MedAI</span>
+                </div>
+                <h1 class="auth-hero-title">Your AI-Powered<br><span class="gradient-text">Medical Assistant</span></h1>
+                <p class="auth-hero-sub">Get accurate, evidence-based health information powered by RAG technology and the latest LLMs.</p>
+
+                <div class="feature-list">
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-brain"></i></div>
+                        <div>
+                            <p class="feature-title">AI-Powered Answers</p>
+                            <p class="feature-desc">LLaMA 3.1 with Pinecone RAG</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-shield-alt"></i></div>
+                        <div>
+                            <p class="feature-title">Secure & Private</p>
+                            <p class="feature-desc">Encrypted sessions & OTP auth</p>
+                        </div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon"><i class="fas fa-bolt"></i></div>
+                        <div>
+                            <p class="feature-title">Real-time Streaming</p>
+                            <p class="feature-desc">Token-by-token response delivery</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ECG Pulse -->
+                <div class="ecg-wrap" style="height: 80px; margin-top: 20px;">
+                    <canvas id="authECG"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel — Login Form -->
+        <div class="auth-right">
+            <div class="auth-card">
+                <div class="auth-card-header">
+                    <h2>Welcome back</h2>
+                    <p>Sign in to your MedAI account</p>
+                </div>
+
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" id="flashAlert">
+                            <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' if category == 'error' else 'info-circle' }}"></i>
+                            <span>{{ message }}</span>
+                            <button class="alert-close" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="{{ url_for('login') }}" id="loginForm" novalidate>
+                    <!-- Username / Email -->
+                    <div class="form-group" id="userFieldGroup">
+                        <label for="username" class="form-label">
+                            <i class="fas fa-user"></i> Username or Email
+                        </label>
+                        <div class="input-wrap">
+                            <input type="text" id="username" name="username" class="form-input" 
+                                   placeholder="Enter username or email" autocomplete="username" required>
+                            <div class="input-focus-line"></div>
+                        </div>
+                        <span class="field-error" id="usernameErr"></span>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="form-group" id="passFieldGroup">
+                        <label for="password" class="form-label">
+                            <i class="fas fa-lock"></i> Password
+                        </label>
+                        <div class="input-wrap password-wrap">
+                            <input type="password" id="password" name="password" class="form-input" 
+                                   placeholder="Enter your password" autocomplete="current-password" required>
+                            <button type="button" class="eye-toggle" id="eyeToggle" aria-label="Toggle password visibility">
+                                <i class="fas fa-eye" id="eyeIcon"></i>
+                            </button>
+                            <div class="input-focus-line"></div>
+                        </div>
+                        <span class="field-error" id="passwordErr"></span>
+                    </div>
+
+                    <!-- Forgot Password Link -->
+                    <div class="form-options">
+                        <a href="{{ url_for('forgot_password') }}" class="forgot-link">Forgot password?</a>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="auth-btn" id="loginBtn">
+                        <span class="btn-text">
+                            <i class="fas fa-sign-in-alt"></i> Sign In
+                        </span>
+                        <span class="btn-loader" style="display:none;">
+                            <i class="fas fa-circle-notch fa-spin"></i> Signing in...
+                        </span>
+                    </button>
+
+                    <!-- Divider -->
+                    <div class="auth-divider"><span>New to MedAI?</span></div>
+
+                    <!-- Register Link -->
+                    <a href="{{ url_for('register') }}" class="auth-alt-btn">
+                        <i class="fas fa-user-plus"></i> Create an Account
+                    </a>
+                </form>
+            </div>
+
+            <p class="auth-footer-note">
+                <i class="fas fa-lock"></i> Protected by enterprise-grade encryption
+            </p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/ecg.js') }}"></script>
+    <script>
+        // Init Real-time ECG
+        initECG('authECG', { bpm: 68, speed: 1.5 });
+
+        // Password toggle
+        document.getElementById('eyeToggle').addEventListener('click', function() {
+            const pwd = document.getElementById('password');
+            const icon = document.getElementById('eyeIcon');
+            if (pwd.type === 'password') {
+                pwd.type = 'text';
+                icon.className = 'fas fa-eye-slash';
+            } else {
+                pwd.type = 'password';
+                icon.className = 'fas fa-eye';
+            }
+        });
+
+        // Form submission with loading state
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            let valid = true;
+
+            document.getElementById('usernameErr').textContent = '';
+            document.getElementById('passwordErr').textContent = '';
+            document.getElementById('userFieldGroup').classList.remove('error');
+            document.getElementById('passFieldGroup').classList.remove('error');
+
+            if (!username) {
+                document.getElementById('usernameErr').textContent = 'Please enter your username or email.';
+                document.getElementById('userFieldGroup').classList.add('error');
+                valid = false;
+            }
+            if (!password) {
+                document.getElementById('passwordErr').textContent = 'Please enter your password.';
+                document.getElementById('passFieldGroup').classList.add('error');
+                valid = false;
+            }
+
+            if (!valid) { e.preventDefault(); return; }
+
+            // Show loading
+            const btn = document.getElementById('loginBtn');
+            btn.querySelector('.btn-text').style.display = 'none';
+            btn.querySelector('.btn-loader').style.display = 'flex';
+            btn.disabled = true;
+        });
+
+        // Auto-dismiss flash after 5s
+        setTimeout(() => {
+            const alert = document.getElementById('flashAlert');
+            if (alert) {
+                alert.style.opacity = '0';
+                alert.style.transform = 'translateY(-8px)';
+                setTimeout(() => alert.remove(), 300);
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
