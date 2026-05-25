@@ -439,11 +439,12 @@ async function streamResponse(message, editMessageId = null) {
                             contentEl.appendChild(cursorEl);
                         }
                         fullText += payload.token;
-                        // Replace the content with current text + cursor
-                        // We use a temporary container to render then append cursor for better UX
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = escapeStreamingText(fullText);
-                        contentEl.innerHTML = tempDiv.innerHTML;
+                        // Compile and render Markdown dynamically as tokens arrive
+                        if (typeof marked !== 'undefined') {
+                            contentEl.innerHTML = marked.parse(fullText);
+                        } else {
+                            contentEl.innerHTML = escapeStreamingText(fullText);
+                        }
                         contentEl.appendChild(cursorEl);
                         scrollToBottom();
                     } else if (payload.done) {
