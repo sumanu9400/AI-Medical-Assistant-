@@ -74,19 +74,8 @@
             </div>
         </div>
 
-        <!-- User Profile Footer -->
-        <div class="sidebar-footer" style="padding: 16px; border-top: 1px solid var(--border); margin-top: auto;">
-            <div class="user-profile-card" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-                <div class="user-avatar-circle" style="width: 36px; height: 36px; background: var(--gradient-brand); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem;">
-                    {{ session.username[0].upper() if session.username else 'U' }}
-                </div>
-                <div class="user-info-text" style="flex: 1; min-width: 0;">
-                    <p class="user-display-name" style="font-size: 0.85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ session.username }}</p>
-                    <p class="user-display-role" style="font-size: 0.7rem; color: var(--text-muted);">{{ session.role | capitalize if session.role else 'User' }}</p>
-                </div>
-                <a href="{{ url_for('logout') }}" style="color: var(--danger); opacity: 0.7; transition: var(--transition);"><i class="fas fa-sign-out-alt"></i></a>
-            </div>
-        </div>
+        <!-- Sidebar Footer spacer -->
+        <div style="margin-top: auto;"></div>
     </aside>
 
     <!-- ===== MAIN PANEL ===== -->
@@ -122,14 +111,6 @@
                 <button id="clearBtn" class="header-icon-btn danger-btn" title="Clear Conversation" aria-label="Clear chat">
                     <i class="fas fa-trash-alt"></i>
                 </button>
-                <div class="user-pill">
-                    <i class="fas fa-user-circle"></i>
-                    <span>{{ session.username }}</span>
-                </div>
-                <a href="{{ url_for('logout') }}" class="logout-btn" title="Sign out">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <span>Logout</span>
-                </a>
             </div>
         </header>
 
@@ -144,7 +125,7 @@
                         <i class="fas fa-heartbeat" style="font-size:1.8rem;color:white;"></i>
                     </div>
                 </div>
-                <h2>Hello, <span class="gradient-text">{{ session.username }}!</span></h2>
+                <h2>Hello! <span class="gradient-text">How can I help you today?</span></h2>
                 <p>I'm your AI-powered Medical Assistant. Ask me anything about symptoms, medications, treatments, or general health — I'll give you accurate, evidence-based answers.</p>
 
                 <div class="feature-pills">

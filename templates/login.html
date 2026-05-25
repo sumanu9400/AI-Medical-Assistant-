@@ -137,6 +137,11 @@
                         </span>
                     </button>
 
+                    <!-- Direct Option -->
+                    <button type="button" class="auth-btn" id="demoLoginBtn" style="margin-top: 12px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);">
+                        <span class="btn-text"><i class="fas fa-magic"></i> Direct Admin Login</span>
+                    </button>
+
                     <!-- Divider -->
                     <div class="auth-divider"><span>New to MedAI?</span></div>
 
@@ -201,6 +206,23 @@
             btn.querySelector('.btn-loader').style.display = 'flex';
             btn.disabled = true;
         });
+
+        // Direct Login auto-populate and submit
+        const demoBtn = document.getElementById('demoLoginBtn');
+        if (demoBtn) {
+            demoBtn.addEventListener('click', () => {
+                document.getElementById('username').value = 'admin';
+                document.getElementById('password').value = 'AdminPassword2026!';
+                
+                // Show loading on main sign in button to indicate progress
+                const btn = document.getElementById('loginBtn');
+                btn.querySelector('.btn-text').style.display = 'none';
+                btn.querySelector('.btn-loader').style.display = 'flex';
+                btn.disabled = true;
+                
+                document.getElementById('loginForm').submit();
+            });
+        }
 
         // Auto-dismiss flash after 5s
         setTimeout(() => {

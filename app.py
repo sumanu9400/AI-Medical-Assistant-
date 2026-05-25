@@ -274,10 +274,33 @@ def get_context_and_history(user_message, session_id=None):
 def favicon():
     return '', 204
 
+@app.before_request
+def auto_login_guest():
+    if request.path.startswith('/static/'):
+        return
+    if 'user_id' not in session:
+        try:
+            with sqlite3.connect('medical_users.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM users WHERE username='guest'")
+                row = cursor.fetchone()
+                if row:
+                    guest_id = row[0]
+                else:
+                    cursor.execute("INSERT INTO users (username, password, email, name, role) VALUES (?, ?, ?, ?, ?)",
+                                 ('guest', 'guest_pass_hash', 'guest@medai.com', 'Guest User', 'user'))
+                    conn.commit()
+                    guest_id = cursor.lastrowid
+                
+                session.permanent = True
+                session['user_id'] = guest_id
+                session['username'] = 'guest'
+                session['role'] = 'user'
+        except Exception as e:
+            logger.error(f"Auto-login guest failed: {e}")
+
 @app.route('/')
 def index():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -764,15 +787,21 @@ def stream_chat():
             is_new_session = True
             title = user_message[:35] + ('...' if len(user_message) > 35 else '')
             # Thread-safe DB access wrapper
-            with sqlite3.connect('medical_users.db') as conn:
-                conn.execute("INSERT INTO chat_sessions (id, user_id, title) VALUES (?, ?, ?)",
-                             (session_id, user_id, title))
+            try:
+                with sqlite3.connect('medical_users.db') as conn:
+                    conn.execute("INSERT INTO chat_sessions (id, user_id, title) VALUES (?, ?, ?)",
+                                 (session_id, user_id, title))
+            except Exception as db_err:
+                logger.error(f"Failed to create new session in DB: {db_err}")
 
         # Save User Msg
-        with sqlite3.connect('medical_users.db') as conn:
-            conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                         (session_id, 'User', user_message))
-            conn.execute("UPDATE chat_sessions SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (session_id,))
+        try:
+            with sqlite3.connect('medical_users.db') as conn:
+                conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                             (session_id, 'User', user_message))
+                conn.execute("UPDATE chat_sessions SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (session_id,))
+        except Exception as db_err:
+            logger.error(f"Failed to save user message to DB: {db_err}")
 
         context, chat_history = get_context_and_history(user_message, session_id)
         messages = build_messages(user_message, context, chat_history)
@@ -798,9 +827,12 @@ def stream_chat():
                     yield f"data: {json.dumps({'token': DISCLAIMER_TEXT})}\n\n"
 
                 # Store response in DB
-                with sqlite3.connect('medical_users.db') as conn:
-                    conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
-                                 (session_id, 'Assistant', full_response))
+                try:
+                    with sqlite3.connect('medical_users.db') as conn:
+                        conn.execute("INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                                     (session_id, 'Assistant', full_response))
+                except Exception as db_err:
+                    logger.error(f"Failed to save assistant response to DB: {db_err}")
                     
                 # Setup cache
                 _response_cache[cache_key] = full_response
