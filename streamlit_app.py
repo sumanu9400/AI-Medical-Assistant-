@@ -76,6 +76,15 @@ def init_db():
                              ('admin', admin_pw_hash, 'admin@medai.com', 'System Admin', 'admin'))
                 conn.commit()
                 logger.info("Default admin account created: admin / MedAIAdmin2025!")
+            
+            # Create a default guest user if it doesn't exist
+            cursor.execute("SELECT id FROM users WHERE username='guest'")
+            if not cursor.fetchone():
+                cursor.execute("INSERT INTO users (username, password, email, name, role) VALUES (?, ?, ?, ?, ?)",
+                             ('guest', 'guest_pass_hash', 'guest@medai.com', 'Guest User', 'user'))
+                conn.commit()
+                logger.info("Default guest account created.")
+
             logger.info("Streamlit local DB successfully initialized.")
     except Exception as e:
         logger.error(f"DB Init Failed in Streamlit: {e}")
@@ -87,6 +96,32 @@ def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+def get_guest_user_id():
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE username='guest'")
+            row = cursor.fetchone()
+            if row:
+                return row['id']
+            else:
+                # Create guest user if missing
+                cursor.execute("INSERT INTO users (username, password, email, name, role) VALUES (?, ?, ?, ?, ?)",
+                             ('guest', 'guest_pass_hash', 'guest@medai.com', 'Guest User', 'user'))
+                conn.commit()
+                return cursor.lastrowid
+    except Exception as e:
+        logger.error(f"Error fetching/creating guest user ID: {e}")
+        return None
+
+def build_messages(user_message, context, chat_history):
+    prompt = MEDICAL_ASSISTANT_PROMPT.format(
+        context=context if context else "No vector documents available - rely on highly accurate medical knowledge.",
+        chat_history=chat_history if chat_history else "No previous conversation.",
+        question=user_message
+    )
+    return [SystemMessage(content=MEDICAL_SYSTEM_PROMPT), HumanMessage(content=prompt)]
 
 def get_users():
     try:
@@ -314,28 +349,20 @@ if "current_session_id" not in st.session_state:
 if "selected_session_title" not in st.session_state:
     st.session_state.selected_session_title = ""
 
-# Load Users & Setup default
-users = get_users()
-default_user = next((u for u in users if u['username'] == 'admin'), None) or (users[0] if users else None)
+# Fetch/Create guest user automatically to bypass login and profile selectors
+guest_id = get_guest_user_id()
+if guest_id:
+    st.session_state.current_user_id = guest_id
+else:
+    st.error("Error setting up guest session database profile. Please contact the administrator.")
+    st.stop()
 
 # --- SIDEBAR CONFIG ---
 with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: #3b82f6; margin-bottom: 1.5rem;'>🏥 MedAI Hub</h2>", unsafe_allow_html=True)
     
-    # 1. User Selector
-    if users:
-        user_options = {u['id']: f"{u['name']} (@{u['username']})" for u in users}
-        selected_user_id = st.selectbox(
-            "Select User Profile",
-            options=list(user_options.keys()),
-            format_func=lambda x: user_options[x],
-            index=list(user_options.keys()).index(default_user['id']) if default_user else 0
-        )
-        st.session_state.current_user_id = selected_user_id
-    else:
-        st.error("No users found in database. Please run the Flask app first.")
-        st.session_state.current_user_id = None
-        st.stop()
+    # Visual Guest indicator
+    st.markdown("<div style='text-align: center; background-color: rgba(59, 130, 246, 0.15); padding: 0.5rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid rgba(59, 130, 246, 0.3);'><span style='color: #93c5fd;'>Logged in as:</span> <b style='color: #ffffff;'>Guest User</b></div>", unsafe_allow_html=True)
         
     st.markdown("---")
     
