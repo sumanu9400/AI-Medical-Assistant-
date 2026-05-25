@@ -12,3 +12,7 @@ python-dotenv
 openai>=1.0.0
 pypdf
 werkzeug>=2.3.0
+langchain-pinecone
+langchain-text-splitters
+streamlit
+gunicorn
