@@ -8,6 +8,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
+from werkzeug.security import generate_password_hash
 
 from src.helper import create_vector_store, retrieve_relevant_context
 from src.prompt import MEDICAL_SYSTEM_PROMPT, MEDICAL_ASSISTANT_PROMPT, DISCLAIMER_TEXT, WELCOME_MESSAGE
@@ -21,6 +22,66 @@ load_dotenv()
 
 # Database Helper Functions
 DB_PATH = "medical_users.db"
+
+def init_db():
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute('''CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                username TEXT UNIQUE, 
+                password TEXT, 
+                email TEXT UNIQUE, 
+                name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+            try: conn.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+            except Exception: pass
+            try: conn.execute("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1")
+            except Exception: pass
+            
+            conn.execute('''CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY, 
+                user_id INTEGER, 
+                title TEXT, 
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id))''')
+            
+            conn.execute('''CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                session_id TEXT, 
+                role TEXT, 
+                content TEXT, 
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE)''')
+            
+            conn.execute('''CREATE TABLE IF NOT EXISTS otp_store (
+                email TEXT PRIMARY KEY,
+                otp_hash TEXT,
+                expires_at TIMESTAMP,
+                attempts INTEGER DEFAULT 0
+            )''')
+            
+            # Indexing for performance
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_chat_sess_user ON chat_sessions(user_id)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_chat_msg_sess ON chat_messages(session_id)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
+            
+            # Create a default admin user if it doesn't exist
+            # Password for default admin: MedAIAdmin2025!
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE username='admin'")
+            if not cursor.fetchone():
+                admin_pw_hash = generate_password_hash("MedAIAdmin2025!")
+                cursor.execute("INSERT INTO users (username, password, email, name, role) VALUES (?, ?, ?, ?, ?)",
+                             ('admin', admin_pw_hash, 'admin@medai.com', 'System Admin', 'admin'))
+                conn.commit()
+                logger.info("Default admin account created: admin / MedAIAdmin2025!")
+            logger.info("Streamlit local DB successfully initialized.")
+    except Exception as e:
+        logger.error(f"DB Init Failed in Streamlit: {e}")
+
+# Run DB initialization at start
+init_db()
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
